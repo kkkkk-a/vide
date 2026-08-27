@@ -476,21 +476,18 @@ class ExportEngine {
     });
   }
 
-// オフラインレンダリング（音声完全合成 ＆ 音楽形式即時出力対応）
-  async exportOfflineFrames(canvas, tracks, duration, options, callbacks, renderFrameFn) {
+async exportOfflineFrames(canvas, tracks, duration, options, callbacks, renderFrameFn) {
     const { onProgress, audioCtx } = callbacks;
     const { fps = 30, format = 'mp4', filename = 'my-video' } = options;
 
-    // ★ 1. タイムライン上のすべての音声を OfflineAudioContext で高音質一括レンダリング
-    onProgress("音声を高音質レンダリング中...");
+    // 1. 音声トラックをオフライン合成
+    onProgress("音声をレンダリング中...");
     const renderedAudioBuffer = await this.renderTimelineAudio(tracks, duration, window.editor?.state?.volume);
 
-    // ★ 2. 音声専用形式（WAV / MP3 / AAC / FLAC / OGG）の超高速書き出し
+    // 2. 音声専用フォーマット書き出し
     const audioFormats = ['wav', 'mp3', 'aac', 'flac', 'ogg'];
     if (audioFormats.includes(format)) {
-      if (!renderedAudioBuffer) {
-        throw new Error("タイムライン上に有効な音声素材がありません。");
-      }
+      if (!renderedAudioBuffer) throw new Error("タイムライン上に有効な音声がありません。");
       onProgress(`${format.toUpperCase()} をエンコード中...`);
       const wavBlob = window.editor.synthEngine.audioBufferToWavBlob(renderedAudioBuffer);
 
@@ -501,7 +498,12 @@ class ExportEngine {
         const fileData = await ExportEngine.fetchFileSafe(wavBlob);
         await ffmpeg.writeFile('audio.wav', fileData);
 
-        const extMap = { mp3: ['-b:a', '320k', 'output.mp3'], aac: ['-c:a', 'aac', '-b:a', '256k', 'output.m4a'], flac: ['-c:a', 'flac', 'output.flac'], ogg: ['-c:a', 'libvorbis', '-q:a', '6', 'output.ogg'] };
+        const extMap = {
+          mp3: ['-b:a', '320k', 'output.mp3'],
+          aac: ['-c:a', 'aac', '-b:a', '256k', 'output.m4a'],
+          flac: ['-c:a', 'flac', 'output.flac'],
+          ogg: ['-c:a', 'libvorbis', '-q:a', '6', 'output.ogg']
+        };
         const args = ['-i', 'audio.wav', ...(extMap[format] || extMap.mp3)];
         const outFileName = args[args.length - 1];
 
@@ -514,102 +516,15 @@ class ExportEngine {
       return;
     }
 
-    // ★ 3. WebCodecs (GPUハードウェアアクセラレーション) が利用可能な場合は秒速エンコードを実行
-    if (format === 'mp4' && typeof window.VideoEncoder === 'function' && typeof window.VideoFrame === 'function') {
-      try {
-        onProgress("GPUハードウェアエンコーダーを初期化中...");
-        await this.exportWithWebCodecs(
-          canvas,
-          renderedAudioBuffer,
-          duration,
-          options,
-          callbacks,
-          renderFrameFn
-        );
-        return;
-      } catch (webCodecsErr) {
-        console.warn("WebCodecs エンコードに失敗したため、通常モードへフォールバックします:", webCodecsErr);
-      }
-    }
+    // 3. 動画素材の取得とシーク準備
+    const videoTracks = tracks.filter(t => t.type === 'video' && t.element && !t.hidden);
+    const pitch = window.editor?.state?.volume?.pitch || 1.0;
 
-    // ★ 4. 通常の動画書き出し（フォールバックキャプチャ）
-    let audioStreamTrack = null;
-    let audioSourceNode = null;
-
-    if (renderedAudioBuffer && audioCtx) {
-      if (audioCtx.state === 'suspended') await audioCtx.resume();
-      const dest = audioCtx.createMediaStreamDestination();
-      audioSourceNode = audioCtx.createBufferSource();
-      audioSourceNode.buffer = renderedAudioBuffer;
-      audioSourceNode.connect(dest);
-      audioStreamTrack = dest.stream.getAudioTracks()[0];
-    }
-
-    return this.captureAndExport(
-      canvas,
-      tracks,
-      duration,
-      { ...options, audioStreamTrack }, // ★ 合成済み音声トラックを渡す
-      {
-        audioCtx,
-        onProgress,
-        onTimeUpdate: async (recorder) => {
-          const totalFrames = Math.max(1, Math.ceil(duration * fps));
-          const frameInterval = 1 / fps;
-          const waitPerFrame = Math.max(20, Math.floor(1000 / fps));
-
-          // 音声再生を開始して同期キャプチャ
-          if (audioSourceNode) {
-            audioSourceNode.start(0);
-          }
-
-          const recordStartTime = performance.now();
-
-          while (true) {
-            const elapsedSec = (performance.now() - recordStartTime) / 1000;
-            const curSec = Math.min(duration, elapsedSec);
-
-            renderFrameFn(curSec);
-
-            const pct = Math.min(100, Math.round((curSec / duration) * 100));
-            onProgress(`映像キャプチャ中... ${pct}% (${curSec.toFixed(1)}s / ${duration.toFixed(1)}s)`);
-
-            if (curSec >= duration) {
-              break;
-            }
-
-            // 次のフレーム描画タイミングまで待機
-            await new Promise(resolve => requestAnimationFrame(resolve));
-          }
-
-          renderFrameFn(duration);
-          await new Promise(resolve => requestAnimationFrame(() => resolve()));
-          onProgress("録画データを集約中...");
-
-          if (recorder.state === 'recording') {
-            try { recorder.requestData(); } catch (e) {}
-          }
-
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          if (recorder.state === 'recording') {
-            recorder.stop();
-          }
-        }
-      }
-    );
-  }
-
-  // ★ WebCodecs API による完全オフライン・超高速GPUハードウェアMP4書き出し
-  async exportWithWebCodecs(canvas, audioBuffer, duration, options, callbacks, renderFrameFn) {
-    const { fps = 30, filename = 'my-video' } = options;
-    const { onProgress } = callbacks;
-
-    // H.264 規格準拠のための厳格な偶数化
-    const width = (canvas.width & ~1);
-    const height = (canvas.height & ~1);
+    // 4. 連番JPEGフレームの確実な生成とFFmpegへの転送
+    const ffmpeg = await this.getFFmpeg(onProgress);
     const totalFrames = Math.max(1, Math.ceil(duration * fps));
-    const frameDurationMicroseconds = Math.round((1 / fps) * 1_000_000);
+    const width = (canvas.width & ~1); // 偶数幅
+    const height = (canvas.height & ~1); // 偶数高さ
 
     let exportCanvas = canvas;
     let exportCtx = null;
@@ -620,123 +535,123 @@ class ExportEngine {
       exportCtx = exportCanvas.getContext('2d');
     }
 
-    const videoChunks = [];
+    const createdFrameFiles = [];
 
-    // 1. H.264 GPU エンコーダーの初期化
-    const encoder = new VideoEncoder({
-      output: (chunk, metadata) => {
-        const chunkData = new Uint8Array(chunk.byteLength);
-        chunk.copyTo(chunkData);
-        videoChunks.push({
-          data: chunkData,
-          type: chunk.type,
-          timestamp: chunk.timestamp,
-          isKey: chunk.type === 'key'
-        });
-      },
-      error: (e) => { throw e; }
-    });
+    try {
+      for (let f = 0; f < totalFrames; f++) {
+        const curSec = Math.min(duration, f / fps);
 
-    const candidateCodecs = [
-      'avc1.640033', // High Profile Level 5.1 (1080p / 4K 対応)
-      'avc1.4d002a', // Main Profile Level 4.2 (1080p 対応)
-      'avc1.42001f'  // Baseline Profile Level 3.1 (720p 互換)
-    ];
+        // 動画素材がある場合、各動画のシーク完了を待機
+        if (videoTracks.length > 0) {
+          await Promise.all(videoTracks.map(t => {
+            const el = t.element;
+            const inRange = curSec >= t.startTime && curSec <= (t.startTime + t.duration);
+            if (!inRange) return Promise.resolve();
 
-    let selectedConfig = null;
-    for (const codec of candidateCodecs) {
-      const testConfig = {
-        codec: codec,
-        width: width,
-        height: height,
-        bitrate: Math.round((width * height * 4) / 1000) * 1000,
-        framerate: fps,
-        hardwareAcceleration: 'prefer-hardware'
-      };
-      const check = await VideoEncoder.isConfigSupported(testConfig).catch(() => ({ supported: false }));
-      if (check.supported) {
-        selectedConfig = testConfig;
-        break;
-      }
-    }
+            const offset = t.mediaOffset || 0;
+            const targetTime = Math.max(0, (offset + (curSec - t.startTime)) * pitch);
+            const maxDur = el.duration || Infinity;
+            const safeTime = Math.min(targetTime, isFinite(maxDur) ? maxDur - 0.05 : targetTime);
 
-    if (!selectedConfig) {
-      throw new Error("この解像度に対応するGPUハードウェアエンコーダー設定が見つかりませんでした");
-    }
+            if (Math.abs(el.currentTime - safeTime) < 0.02) return Promise.resolve();
 
-    encoder.configure(selectedConfig);
+            return new Promise(res => {
+              const onSeeked = () => {
+                el.removeEventListener('seeked', onSeeked);
+                res();
+              };
+              el.addEventListener('seeked', onSeeked, { once: true });
+              el.currentTime = safeTime;
+              setTimeout(res, 80); // タイムアウト保護
+            });
+          }));
+        }
 
-    // 2. コマ送りオフライン高速レンダリング (GPUフレーム生成)
-    for (let f = 0; f <= totalFrames; f++) {
-      const curSec = Math.min(duration, f / fps);
-      renderFrameFn(curSec);
+        renderFrameFn(curSec);
 
-      if (exportCtx) {
-        exportCtx.drawImage(canvas, 0, 0, width, height);
+        if (exportCtx) {
+          exportCtx.drawImage(canvas, 0, 0, width, height);
+        }
+
+        // CanvasをJPEGバイナリとして取得
+        const frameBlob = await new Promise(r => exportCanvas.toBlob(r, 'image/jpeg', 0.92));
+        const frameData = new Uint8Array(await frameBlob.arrayBuffer());
+        const frameName = `f_${String(f).padStart(6, '0')}.jpg`;
+
+        await ffmpeg.writeFile(frameName, frameData);
+        createdFrameFiles.push(frameName);
+
+        const pct = Math.round(((f + 1) / totalFrames) * 70);
+        onProgress(`フレームレンダリング中... ${pct}% (${f + 1}/${totalFrames})`);
       }
 
-      const timestamp = f * frameDurationMicroseconds;
-      const frame = new VideoFrame(exportCanvas, { timestamp });
-
-      const isKeyFrame = f % (fps * 2) === 0; // 2秒ごとにキーフレーム(I-Frame)を挿入
-      encoder.encode(frame, { keyFrame: isKeyFrame });
-      frame.close();
-
-      const pct = Math.min(95, Math.round((f / totalFrames) * 95));
-      onProgress(`GPU高速レンダリング中... ${pct}% (${f}/${totalFrames})`);
-
-      // エンコーダーのキューが詰まらないよう定期的にフラッシュ
-      if (encoder.encodeQueueSize > 5) {
-        await new Promise(resolve => setTimeout(resolve, 4));
+      // 音声WAVの書き込み
+      let hasAudio = false;
+      if (renderedAudioBuffer && window.editor?.synthEngine) {
+        const wavBlob = window.editor.synthEngine.audioBufferToWavBlob(renderedAudioBuffer);
+        const audioData = await ExportEngine.fetchFileSafe(wavBlob);
+        await ffmpeg.writeFile('audio.wav', audioData);
+        hasAudio = true;
       }
+
+      onProgress("動画をエンコード・結合中... (80%)");
+
+      const outFileName = `output.${format}`;
+      const ffmpegArgs = [
+        '-framerate', String(fps),
+        '-i', 'f_%06d.jpg'
+      ];
+
+      if (hasAudio) {
+        ffmpegArgs.push('-i', 'audio.wav');
+      }
+
+      if (format === 'mp4') {
+        ffmpegArgs.push(
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+          '-crf', '23'
+        );
+        if (hasAudio) {
+          ffmpegArgs.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
+        }
+        ffmpegArgs.push('-movflags', '+faststart', outFileName);
+      } else if (format === 'webm') {
+        ffmpegArgs.push(
+          '-c:v', 'libvpx',
+          '-b:v', '3M',
+          '-pix_fmt', 'yuv420p'
+        );
+        if (hasAudio) {
+          ffmpegArgs.push('-c:a', 'libvorbis', '-shortest');
+        }
+        ffmpegArgs.push(outFileName);
+      } else if (format === 'gif') {
+        ffmpegArgs.push(
+          '-vf', `fps=${Math.min(15, fps)},scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`,
+          outFileName
+        );
+      } else {
+        ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', outFileName);
+      }
+
+      await ffmpeg.exec(ffmpegArgs);
+      const outputData = await ffmpeg.readFile(outFileName);
+
+      const mimeMap = { mp4: 'video/mp4', webm: 'video/webm', gif: 'image/gif' };
+      const resultBlob = new Blob([outputData], { type: mimeMap[format] || 'video/mp4' });
+
+      ExportEngine.triggerDownload(resultBlob, `${filename}.${format}`);
+      onProgress("書き出し完了！");
+    } finally {
+      // 一時連番ファイルの削除
+      for (const fn of createdFrameFiles) {
+        try { await ffmpeg.deleteFile(fn); } catch (e) {}
+      }
+      try { await ffmpeg.deleteFile('audio.wav'); } catch (e) {}
+      try { await ffmpeg.deleteFile(`output.${format}`); } catch (e) {}
     }
-
-    await encoder.flush();
-    encoder.close();
-
-    // 3. 音声WAVと映像チャンクを最終MP4ファイルにパッケージ化
-    onProgress("MP4コンテナに高速出力中... 98%");
-
-    // 音声がある場合は WAV Blob を生成
-    let wavBlob = null;
-    if (audioBuffer && window.editor?.synthEngine) {
-      wavBlob = window.editor.synthEngine.audioBufferToWavBlob(audioBuffer);
-    }
-
-    // FFmpeg で映像ストリームと音声ストリームを無再エンコード（copy）で一瞬結合
-    const ffmpeg = await this.getFFmpeg();
-    
-    // 映像 raw データを書き込み
-    const totalVideoSize = videoChunks.reduce((sum, c) => sum + c.data.byteLength, 0);
-    const fullVideoData = new Uint8Array(totalVideoSize);
-    let offset = 0;
-    for (const chunk of videoChunks) {
-      fullVideoData.set(chunk.data, offset);
-      offset += chunk.data.byteLength;
-    }
-
-    await ffmpeg.writeFile('video.h264', fullVideoData);
-
-    const ffmpegArgs = ['-r', String(fps), '-i', 'video.h264'];
-
-    if (wavBlob) {
-      const audioData = await ExportEngine.fetchFileSafe(wavBlob);
-      await ffmpeg.writeFile('audio.wav', audioData);
-      ffmpegArgs.push('-i', 'audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-ar', '44100', '-movflags', '+faststart', 'output.mp4');
-    } else {
-      ffmpegArgs.push('-c:v', 'copy', '-movflags', '+faststart', 'output.mp4');
-    }
-
-    await ffmpeg.exec(ffmpegArgs);
-    const data = await ffmpeg.readFile('output.mp4');
-
-    try { await ffmpeg.deleteFile('video.h264'); } catch (e) {}
-    if (wavBlob) { try { await ffmpeg.deleteFile('audio.wav'); } catch (e) {} }
-    try { await ffmpeg.deleteFile('output.mp4'); } catch (e) {}
-
-    const finalMp4Blob = new Blob([data], { type: 'video/mp4' });
-    ExportEngine.triggerDownload(finalMp4Blob, `${filename}.mp4`);
-    onProgress("超高速MP4書き出し完了！");
   }
 }
 

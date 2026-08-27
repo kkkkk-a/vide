@@ -81,6 +81,8 @@ class VideoEditorEngine {
             t._lastTextCacheKey = null;
             t._cachedTransform = null;
             t._cachedTransformKey = null;
+            t._cachedBitmapKey = null;
+            t._cachedCanvas = null;
           }
         });
         this.notifyUpdate({ timeline: true, render: true });
@@ -167,7 +169,8 @@ class VideoEditorEngine {
     // 1. 動画 / 画像
     const drawMedia = (ctx, clip, animT) => {
       const el = clip.element;
-      if (!el || (clip.type === 'video' && el.readyState < 2) || (clip.type === 'image' && (!el.complete || el.naturalWidth === 0))) return;
+      // readyState < 1 の完全未ロード時のみスキップし、シーク中(readyState >= 1)はフレームを描画
+      if (!el || (clip.type === 'video' && el.readyState < 1) || (clip.type === 'image' && (!el.complete || el.naturalWidth === 0))) return;
 
       const imgW = clip.type === 'video' ? el.videoWidth : el.naturalWidth;
       const imgH = clip.type === 'video' ? el.videoHeight : el.naturalHeight;
@@ -2086,21 +2089,28 @@ calculateAnimTransform(clip) {
         newModel = clip.model.clone(true);
         newModel.traverse((child) => {
           if (child.isMesh && child.material) {
-            child.material = child.material.clone();
+            child.material = Array.isArray(child.material)
+              ? child.material.map(m => m.clone())
+              : child.material.clone();
           }
-          // ★ パーティクルのジオメトリ属性・物理データを新しいモデルへ完全に複製
-          if (child.isPoints && clip.model.userData) {
-            if (clip.model.geometry) {
-              child.geometry = clip.model.geometry.clone();
+          if (child.isPoints) {
+            if (child.material) {
+              child.material = child.material.clone();
             }
+            if (child.geometry) {
+              child.geometry = child.geometry.clone();
+            }
+            const origUserData = clip.model.userData || child.userData || {};
             child.userData = {
-              particleType: clip.model.userData.particleType || 'fire',
-              basePositions: clip.model.userData.basePositions ? new Float32Array(clip.model.userData.basePositions) : null
+              particleType: origUserData.particleType || 'fire',
+              basePositions: origUserData.basePositions ? new Float32Array(origUserData.basePositions) : null
             };
+            newModel.userData = { ...child.userData };
           }
         });
         this.threeScene.add(newModel);
       } else if (clip.type === 'image' && clip.element) {
+
         newElement = clip.element; // 画像は静止画のため共有で安全
       }
 
@@ -2606,19 +2616,26 @@ calculateAnimTransform(clip) {
       newModel = clip.model.clone(true);
       newModel.traverse((child) => {
         if (child.isMesh && child.material) {
-          child.material = child.material.clone();
+          child.material = Array.isArray(child.material) 
+            ? child.material.map(m => m.clone()) 
+            : child.material.clone();
         }
-        // ★ パーティクルのジオメトリ属性・物理データを複製側へ完全に引き継ぐ
-        if (child.isPoints && clip.model.userData) {
-          if (clip.model.geometry) {
-            child.geometry = clip.model.geometry.clone();
+        if (child.isPoints) {
+          if (child.material) {
+            child.material = child.material.clone();
           }
+          if (child.geometry) {
+            child.geometry = child.geometry.clone();
+          }
+          const origUserData = clip.model.userData || child.userData || {};
           child.userData = {
-            particleType: clip.model.userData.particleType || 'fire',
-            basePositions: clip.model.userData.basePositions ? new Float32Array(clip.model.userData.basePositions) : null
+            particleType: origUserData.particleType || 'fire',
+            basePositions: origUserData.basePositions ? new Float32Array(origUserData.basePositions) : null
           };
+          newModel.userData = { ...child.userData };
         }
       });
+
 
       // ★ ボーンアニメーションを持つモデルの場合、Mixer も独立して再生成
       let newMixer = null;
@@ -4743,9 +4760,25 @@ calculateAnimTransform(clip) {
         const val = e.target.value;
         if (item.text !== undefined) {
           item.text = val;
+
+          // ★ キーフレーム設定済みテキストの場合、現在時刻のアクティブキーフレームも同期更新
+          if (Array.isArray(item.textKeyframes) && item.textKeyframes.length > 0) {
+            const relSec = Math.max(0, this.state.currentTime - item.startTime);
+            let activeKf = item.textKeyframes[0];
+            for (let i = 0; i < item.textKeyframes.length; i++) {
+              if (relSec >= item.textKeyframes[i].time) {
+                activeKf = item.textKeyframes[i];
+              }
+            }
+            if (activeKf) {
+              activeKf.text = val;
+            }
+          }
+
           // ★ テキストキャッシュを即座に破棄してプレビュー画面へ確実に反映
           item._cachedLines = null;
           item._lastTextCacheKey = null;
+          item._cachedBitmapKey = null;
         } else {
           item.name = val;
         }
@@ -5896,8 +5929,12 @@ setupTimelineUI() {
         return;
       }
 
+      // ★ ドラッグ開始前の位置をUndo履歴に記録（移動を確実に元に戻せるようにする）
+      this.saveState();
+
       const isAlreadySelected = this.selectedItems.some(i => i === clip || (i.id && i.id === clip.id));
       const isMulti = e.shiftKey || this.state.isMultiSelectMode;
+
 
       if (isMulti) {
         if (!isAlreadySelected) {
@@ -6408,9 +6445,19 @@ setupTimelineUI() {
 
             const timeDiff = Math.abs(el.currentTime - safeTime);
             if (timeDiff >= 0.03) {
+              // シーク完了時にプレビューを確実に更新するリスナーを一度だけバインド
+              if (!el._hasSeekedListener) {
+                el._hasSeekedListener = true;
+                el.addEventListener('seeked', () => {
+                  if (!this.state.isPlaying) {
+                    this.requestRender();
+                  }
+                });
+              }
+
               if (typeof el.fastSeek === 'function' && !this.state.isPlaying) {
                 el.fastSeek(safeTime);
-              } else if (!el.seeking || timeDiff > 0.08) {
+              } else {
                 el.currentTime = safeTime;
               }
             }
@@ -6425,6 +6472,7 @@ setupTimelineUI() {
             }
           }
         }
+
 
         // 2. 図形内にはめ込まれた動画メディアのシーク同期
         if (clip.innerMediaElement && clip.innerMediaElement.tagName === 'VIDEO') {
@@ -6487,9 +6535,12 @@ setupTimelineUI() {
 
     if (!clip._audioNodes) {
       try {
-        // メディア要素に既に作られたソースノードがあれば再利用し多重接続エラーを完全防止
-        const source = clip.element._mediaElementSourceNode || ctx.createMediaElementSource(clip.element);
-        clip.element._mediaElementSourceNode = source;
+        // メディア要素に既に作られたソースノードがあれば再利用し、多重接続による InvalidStateError を完全遮断
+        let source = clip.element._mediaElementSourceNode;
+        if (!source) {
+          source = ctx.createMediaElementSource(clip.element);
+          clip.element._mediaElementSourceNode = source;
+        }
 
         const lowFilter = ctx.createBiquadFilter();
         lowFilter.type = 'lowshelf';
@@ -6609,15 +6660,20 @@ setupTimelineUI() {
             const offset = t.mediaOffset || 0;
             const expectedTime = offset + ((curTime - t.startTime) * pitch);
             const mediaDuration = el.duration || Infinity;
+            const maxSafeMediaTime = isFinite(mediaDuration) ? Math.max(0, mediaDuration - 0.05) : expectedTime;
+            const targetMediaTime = Math.max(0, Math.min(expectedTime, maxSafeMediaTime));
 
             // 高精度AV同期: 微小なズレは再生速度を微調整して滑らかに追いつかせ、大きなズレのみシーク
-            const drift = el.currentTime - expectedTime;
+            const drift = el.currentTime - targetMediaTime;
             const absDrift = Math.abs(drift);
 
-            if (!el.seeking) {
+            // ★ 実尺の終端に達している場合はシークを連打せずそのまま静止
+            const isAtEnd = isFinite(mediaDuration) && expectedTime >= maxSafeMediaTime && Math.abs(el.currentTime - maxSafeMediaTime) < 0.1;
+
+            if (!el.seeking && !isAtEnd) {
               if (absDrift > 0.20) {
                 // 0.20秒以上の大きなズレは強制シークで復旧
-                el.currentTime = Math.max(0, Math.min(expectedTime, isFinite(mediaDuration) ? mediaDuration - 0.05 : expectedTime));
+                el.currentTime = targetMediaTime;
                 el.playbackRate = pitch;
               } else if (absDrift > 0.04) {
                 // 0.04〜0.20秒の軽微なズレは再生レートを ±5% 微調整してスムーズに同期
