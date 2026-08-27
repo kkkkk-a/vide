@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pro Video Editor</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.ico">
+
+  <!-- 動画書き出しエンジン (ローカルフォルダから読み込み) -->
+  <script src="ffmpeg-lib/ffmpeg.js"></script>
+  <script src="ffmpeg-lib/util.js"></script>
+  
+<!-- ★ 追加: Quill.js Rich Text Editor CSS -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+
+  <!-- ★ 追加: Google Fonts (レトロドット・手書き・丸ゴシック・明朝) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Klee+One&family=M+PLUS+Rounded+1c:wght@400;700&family=Shippori+Mincho&display=swap" rel="stylesheet">
+
+  <!-- 3Dモデル描画エンジン (Three.js) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <!-- ★ 追加: Quill.js スクリプト -->
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+
+  <script type="module">
+    import * as transformers from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.14.0';
+    window.transformers = transformers;
+  </script>
+</head>
+<body>
+  <div id="app">
+<header class="header">
+      <div class="header-left">
+        <button id="btn-shortcuts" class="btn btn-secondary" title="ショートカット一覧 (?)">？</button>
+        <button id="btn-undo" class="btn btn-secondary" disabled>元に戻す</button>
+        <button id="btn-redo" class="btn btn-secondary" disabled>やり直す</button>
+        
+        <!-- プロジェクト保存 ＆ 開く -->
+        <button id="btn-save-project" class="btn btn-secondary" title="プロジェクトをJSONファイルとして保存">保存</button>
+        <label for="project-input" class="btn btn-secondary" title="保存したJSONプロジェクトを開く">開く</label>
+        <input type="file" id="project-input" accept=".json" hidden>
+
+        <label for="video-input" class="btn btn-secondary">動画</label>
+        <input type="file" id="video-input" accept="video/*" hidden>
+        
+        <label for="image-input" class="btn btn-secondary">画像</label>
+        <input type="file" id="image-input" accept="image/*" hidden>
+        
+        <label for="audio-input" class="btn btn-secondary">音声</label>
+        <input type="file" id="audio-input" accept="audio/*" hidden>
+
+        <label for="model3d-input" class="btn btn-secondary">3Dモデル</label>
+        <input type="file" id="model3d-input" accept=".glb,.gltf" hidden>
+
+        <!-- 画面録画 ＆ マーカー設置ボタン -->
+        <button id="btn-open-screen-record" class="btn btn-secondary btn-rec-trigger" aria-label="画面録画を開く">[REC] 画面録画</button>
+        <button id="btn-toggle-pointer" class="btn btn-secondary" title="マーカー追加 (Mキー)" aria-label="マーカー打刻">マーカー打刻</button>
+        <button id="btn-open-markers" class="btn btn-secondary" title="マーカー一覧" aria-label="マーカー一覧">マーカー一覧</button>
+      </div>
+
+<div class="header-center">
+        <select id="aspect-select" class="dropdown">
+          <optgroup label="縦型 (Shorts / TikTok / Reels)">
+            <option value="9:16">9:16 (縦型 720p)</option>
+            <option value="9:16-hd" selected>9:16 (縦型フルHD 1080p)</option>
+            <option value="9:16-4k">9:16 (縦型4K 2160p)</option>
+          </optgroup>
+          <optgroup label="横型 (YouTube / PC)">
+            <option value="16:9">16:9 (横型フルHD 1080p)</option>
+            <option value="16:9-2k">16:9 (横型2K 1440p)</option>
+            <option value="16:9-4k">16:9 (横型4K 2160p)</option>
+          </optgroup>
+          <optgroup label="SNS / スクエア">
+            <option value="1:1">1:1 (スクエア 1080p)</option>
+            <option value="4:5">4:5 (Instagramフィード)</option>
+            <option value="21:9">21:9 (シネマスコープ)</option>
+          </optgroup>
+          <optgroup label="カスタム">
+            <option value="custom">カスタム (数値自由指定)</option>
+          </optgroup>
+        </select>
+
+        <!-- カスタム解像度入力用 (「カスタム」選択時のみ表示) -->
+        <div id="custom-res-inputs" class="custom-res-group hidden">
+          <input type="number" id="custom-width" class="custom-res-input" value="1080" placeholder="幅">
+          <span class="custom-res-sep">×</span>
+          <input type="number" id="custom-height" class="custom-res-input" value="1920" placeholder="高さ">
+        </div>
+      </div>
+
+      <button id="export-btn" class="btn btn-accent" disabled>書き出し</button>
+    </header>
+
+    <!-- 2. プレビューエリア -->
+    <main class="preview-container" id="drop-zone">
+      <!-- プレビュー全画面拡大（シアターモード）ボタン -->
+      <button id="btn-fullscreen-preview" class="btn-preview-fullscreen" title="プレビュー全画面表示" aria-label="全画面表示切り替え">全画面</button>
+
+      <canvas id="preview-canvas"></canvas>
+      
+      <div id="drag-overlay" class="drag-overlay hidden">
+        <p>ここにファイルをドロップ</p>
+      </div>
+      
+      <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p id="loading-text">処理中... 0%</p>
+      </div>
+
+      <!-- ショートカット一覧モーダル -->
+      <div id="panel-shortcuts" class="modal-export hidden" role="dialog" aria-modal="true" aria-labelledby="title-shortcuts">
+        <h3 id="title-shortcuts">ショートカット早見表</h3>
+        <div class="shortcuts-list">
+          <div class="shortcuts-row"><span>プロジェクト保存</span><kbd class="kbd-badge">Ctrl + S</kbd></div>
+          <div class="shortcuts-row"><span>プロジェクトを開く</span><kbd class="kbd-badge">Ctrl + O</kbd></div>
+          <div class="shortcuts-row"><span>マーカー打刻</span><kbd class="kbd-badge">M</kbd></div>
+          <div class="shortcuts-row"><span>すべての素材を全選択</span><kbd class="kbd-badge">Ctrl + A</kbd></div>
+          <div class="shortcuts-row"><span>選択素材の1px/10px移動</span><kbd class="kbd-badge">Alt + 矢印 / Shift</kbd></div>
+          <div class="shortcuts-row"><span>再生 / 一時停止</span><kbd class="kbd-badge">Space / K</kbd></div>
+          <div class="shortcuts-row"><span>再生 / 巻戻し (JKL)</span><kbd class="kbd-badge">J / L</kbd></div>
+          <div class="shortcuts-row"><span>素材の分割 (Cut)</span><kbd class="kbd-badge">C / S</kbd></div>
+          <div class="shortcuts-row"><span>素材の削除</span><kbd class="kbd-badge">Delete / BS</kbd></div>
+          <div class="shortcuts-row"><span>詰める削除 (リップル)</span><kbd class="kbd-badge">Shift + Delete</kbd></div>
+          <div class="shortcuts-row"><span>素材の表示 / 非表示</span><kbd class="kbd-badge">V</kbd></div>
+          <div class="shortcuts-row"><span>前後の切れ目へジャンプ</span><kbd class="kbd-badge">↑ / ↓</kbd></div>
+          <div class="shortcuts-row"><span>先頭 / 末尾へジャンプ</span><kbd class="kbd-badge">Home / End</kbd></div>
+          <div class="shortcuts-row"><span>コマ送り (0.1秒)</span><kbd class="kbd-badge">← / →</kbd></div>
+          <div class="shortcuts-row"><span>ズーム拡大 / 縮小</span><kbd class="kbd-badge">+ / -</kbd></div>
+          <div class="shortcuts-row"><span>元に戻す / やり直し</span><kbd class="kbd-badge">Ctrl + Z / Y</kbd></div>
+          <div class="shortcuts-row"><span>コピー / 貼り付け / カット</span><kbd class="kbd-badge">Ctrl + C / V / X</kbd></div>
+          <div class="shortcuts-row"><span>選択解除 / 閉じる</span><kbd class="kbd-badge">Esc</kbd></div>
+        </div>
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-shortcuts').classList.add('hidden')">✕</button>
+      </div>
+
+      <!-- 書き出し設定モーダル（整列レイアウト版） -->
+      <div id="panel-export" class="modal-export hidden" role="dialog" aria-modal="true" aria-labelledby="title-export">
+        <h3 id="title-export">書き出し設定</h3>
+
+        <div class="setting-group-box">
+          <span>ファイル名:
+            <input type="text" id="export-filename" value="my-video" style="max-width: 180px;">
+          </span>
+
+          <span>フォーマット:
+            <select id="export-format" class="dropdown dropdown-wide">
+              <optgroup label="動画形式">
+                <option value="mp4" selected>MP4 (.mp4 - 標準・YouTube / TikTok推奨)</option>
+                <option value="mov">MOV (.mov - Apple QuickTime / ProRes対応)</option>
+                <option value="webm">WebM (.webm - 高速書き出し)</option>
+                <option value="avi">AVI (.avi - Windows標準)</option>
+                <option value="mkv">MKV (.mkv - 高機能コンテナ)</option>
+                <option value="amv">AMV (.amv - アニメMAD / 携帯プレイヤー向け)</option>
+                <option value="gif">GIF (.gif - アニメーション画像)</option>
+              </optgroup>
+              <optgroup label="音声・音楽形式">
+                <option value="wav">WAV (.wav - 24bit 最高音質リニアPCM)</option>
+                <option value="mp3">MP3 (.mp3 - 320kbps 汎用オーディオ)</option>
+                <option value="aac">AAC / M4A (.m4a - 高音質圧縮)</option>
+                <option value="flac">FLAC (.flac - ハイレゾ可逆圧縮)</option>
+                <option value="ogg">OGG (.ogg - ゲーム / Web用)</option>
+              </optgroup>
+            </select>
+          </span>
+
+          <!-- ★ サムネイル即時書き出しセクション -->
+          <div class="setting-group-box">
+            <span>現在の赤針フレームをサムネイル保存:</span>
+            <div class="flex-btn-group">
+              <button id="btn-snap-thumb-png" class="btn btn-secondary flex-1">サムネ保存 (PNG 最高画質)</button>
+              <button id="btn-snap-thumb-jpg" class="btn btn-secondary flex-1">サムネ保存 (JPG)</button>
+            </div>
+          </div>
+
+          <span>フレームレート:
+            <select id="export-fps" class="dropdown dropdown-wide">
+              <option value="30" selected>30 FPS (標準)</option>
+              <option value="60">60 FPS (滑らか・高画質)</option>
+            </select>
+          </span>
+
+          <span>画質 (ビットレート):
+            <select id="export-quality" class="dropdown dropdown-wide">
+              <option value="medium">標準 (標準ファイルサイズ)</option>
+              <option value="high" selected>高画質 (推奨)</option>
+              <option value="ultra">最高画質 (大容量)</option>
+            </select>
+          </span>
+        </div>
+
+        <!-- 予測計算結果の表示エリア -->
+        <div class="export-estimate-box">
+          <div class="estimate-row">
+            <span class="label">動画の長さ:</span>
+            <span id="exp-preview-duration" class="val">00:00</span>
+          </div>
+          <div class="estimate-row">
+            <span class="label">予測ファイルサイズ:</span>
+            <span id="exp-preview-size" class="val accent">約 0 MB</span>
+          </div>
+          <div class="estimate-row">
+            <span class="label">予測エンコード時間:</span>
+            <span id="exp-preview-time" class="val">約 0 秒</span>
+          </div>
+        </div>
+
+        <button id="start-export-btn" class="btn btn-accent btn-export-start">
+          書き出しスタート
+        </button>
+
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-export').classList.add('hidden')">✕</button>
+      </div>
+
+      <!-- 画面録画モーダル -->
+      <div id="panel-screen-record" class="modal-export modal-record hidden" role="dialog" aria-modal="true" aria-labelledby="title-screen-record">
+        <h3 id="title-screen-record" class="record-modal-title">画面録画スタジオ</h3>
+
+        <div class="setting-group-box">
+          <span>録画ソース:
+            <select id="record-source-type" class="dropdown dropdown-wide">
+              <option value="monitor" selected>画面全体 (ディスプレイ単位)</option>
+              <option value="window">特定ウィンドウ単位</option>
+              <option value="browser">ブラウザタブ単位</option>
+              <option value="canvas">エディタのプレビュー画面</option>
+              <option value="camera">Webカメラ映像のみ</option>
+            </select>
+          </span>
+          <span>画面内部の音声 (システム音/タブ音):
+            <input type="checkbox" id="record-system-audio-enabled" checked class="checkbox-large">
+          </span>
+          <span>マイク音声も同時録音:
+            <input type="checkbox" id="record-mic-enabled" class="checkbox-large">
+          </span>
+          <span>Webカメラ映像を右下にワイプ合成 (PiP):
+            <input type="checkbox" id="record-camera-pip-enabled" class="checkbox-large">
+          </span>
+          <span>録画フレームレート:
+            <select id="record-fps" class="dropdown">
+              <option value="30" selected>30 FPS</option>
+              <option value="60">60 FPS</option>
+            </select>
+          </span>
+        </div>
+
+        <!-- 録画中プレビュー -->
+        <div id="record-live-box" class="record-preview-box hidden">
+          <video id="record-live-video" autoplay muted playsinline></video>
+          <div class="record-indicator">REC <span id="record-live-timer">00:00</span></div>
+        </div>
+
+        <button id="btn-start-record" class="btn btn-accent btn-export-start btn-record-start">
+          録画を開始する
+        </button>
+        <button id="btn-stop-record" class="btn btn-accent btn-export-start btn-record-stop hidden">
+          録画を終了してタイムラインに追加
+        </button>
+
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-screen-record').classList.add('hidden')">✕</button>
+      </div>
+
+      <!-- マーカー一覧管理モーダル -->
+      <div id="panel-markers" class="modal-export hidden" role="dialog" aria-modal="true" aria-labelledby="title-markers">
+        <div class="sub-panel-header">
+          <h3 id="title-markers">マーカー一覧</h3>
+          <button id="btn-add-quick-marker" class="btn btn-secondary panel-header-btn">+ 今の位置に打刻 (M)</button>
+        </div>
+
+        <div id="markers-list-container" class="markers-list-box">
+          <!-- JSでマーカー一覧が動的に並びます -->
+        </div>
+
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-markers').classList.add('hidden')">✕</button>
+      </div>
+
+    </main>
+
+<!-- 3. コントロールバー -->
+<section class="controls">
+      <div class="time-code">
+        <span class="label">TIME</span>
+        <input type="text" id="time-input" value="00:00.00" title="時間を直接入力してジャンプ">
+      </div>
+
+      <!-- 選択中素材の時間・テキスト編集インジケーター -->
+      <div id="clip-time-editor" class="clip-time-editor hidden">
+        <span class="clip-info-label" id="clip-type-label">CLIP</span>
+        <label>IN <input type="number" id="clip-in-time" step="0.1" min="0" title="開始秒"></label>
+        <label>OUT <input type="number" id="clip-out-time" step="0.1" min="0" title="終了秒"></label>
+        <label>DUR <input type="number" id="clip-dur-time" step="0.1" min="0.1" title="長さ(秒)"></label>
+        <input type="text" id="clip-quick-text" placeholder="名前 / テキスト" title="素材名・テキストを直接編集">
+        <button id="btn-clip-toggle-hide" class="btn-clip-action" title="選択クリップの表示/非表示 (Vキー)">表示</button>
+        <button id="btn-clip-toggle-lock" class="btn-clip-action" title="選択クリップの編集ロック">ロック</button>
+        <button id="btn-clip-toggle-mute" class="btn-clip-action" title="選択クリップの消音">消音</button>
+      </div>
+      
+      <button id="play-btn" class="btn-play" disabled>PLAY</button>
+
+      
+      <div class="zoom-controls">
+        <button id="btn-zoom-out" class="btn-icon" title="縮小 (全景)">－</button>
+        <input type="range" id="zoom-slider" class="zoom-slider" min="0.1" max="500" step="0.1" value="60">
+        <button id="btn-zoom-in" class="btn-icon" title="拡大 (詳細)">＋</button>
+      </div>
+
+      <div class="controls-right-group">
+        <button id="btn-multi-select" class="btn-icon" title="スマホ向け複数選択">複数選択 OFF</button>
+        <button id="btn-snap" class="btn-icon active" title="スナップ機能">スナップ ON</button>
+      </div>
+    </section>
+
+    <!-- 4. タイムラインエリア -->
+    <section class="timeline-container" id="timeline-container">
+      <!-- 上部固定ルーラー -->
+      <canvas class="time-ruler" id="time-ruler"></canvas>
+
+      <!-- 再生針 -->
+      <div class="playhead">
+        <div class="playhead-head"></div>
+      </div>
+      
+      <!-- タイムライントラックコンテナ -->
+      <div class="timeline-tracks" id="timeline-tracks">
+        <div id="snap-guide-line" class="snap-guide-line hidden"></div>
+        <div id="video-tracks"></div>
+      </div>
+    </section>
+
+    <!-- 5. モーダル・調整パネル群 (背景色・背景画像・背景動画) -->
+    <div id="panel-bgcolor" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>キャンバス背景設定 (全編共通)</h3>
+      </div>
+      <span>背景単色: <input type="color" id="bg-color-picker" value="#000000"></span>
+      <span>背景画像: <input type="file" id="bg-image-input" accept="image/*" class="dropdown file-input-compact"></span>
+      <span>背景動画 (ループ): <input type="file" id="bg-video-input" accept="video/*" class="dropdown file-input-compact"></span>
+      <button id="reset-bg-media-btn" class="btn btn-secondary panel-header-btn">背景メディアをクリア (単色に戻す)</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- フィルター設定パネル -->
+    <div id="panel-filter" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <div class="filter-header-group">
+          <h3>フィルター & シネマカラー</h3>
+          <label class="filter-bypass-label">
+            <input type="checkbox" id="filter-bypass-toggle" checked class="filter-bypass-check"> 有効
+          </label>
+        </div>
+        <button id="reset-filter-btn" class="btn btn-secondary panel-header-btn">リセット</button>
+      </div>
+
+      <!-- 映画風 3D-LUT シネマカラーグレーディング -->
+      <span class="sub-panel-section-title filter-section-top">3D-LUT シネマカラー</span>
+      <div class="setting-group-box">
+        <span>プリセット:
+          <select id="filter-lut-preset" class="dropdown dropdown-wide">
+            <option value="none" selected>なし (標準)</option>
+            <option value="custom_cube">カスタム LUT (.cube ファイル)</option>
+            <option value="underwater">水中・深海 (Underwater / Deep Sea)</option>
+            <option value="golden_hour">夕暮れ・黄昏 (Golden Hour / Sunset)</option>
+            <option value="teal_orange">ハリウッド映画風 (Teal & Orange)</option>
+            <option value="cyberpunk">サイバーパンク (Neon Cyber)</option>
+            <option value="matrix">SFマトリックス (Matrix Green)</option>
+            <option value="bleach_bypass">銀残し・重厚シネマ (Bleach Bypass)</option>
+            <option value="vintage">70s レトロフィルム (Vintage)</option>
+            <option value="noir">フィルムノワール (Film Noir / 白黒)</option>
+          </select>
+        </span>
+
+        <!-- カスタム LUT ファイル読み込み -->
+        <span id="row-custom-lut-file" class="hidden">LUTファイル (.cube):
+          <input type="file" id="filter-custom-lut-input" accept=".cube" class="dropdown file-input-compact">
+        </span>
+
+        <span>適用強度:
+          <input type="range" id="filter-lut-intensity" min="0" max="100" value="80">
+          <span id="val-filter-lut" class="val-badge">80%</span>
+        </span>
+      </div>
+
+      <span class="sub-panel-section-title">基本カラー補正</span>
+      <span>明るさ: <input type="range" id="filter-brightness" min="0" max="200" value="100"></span>
+      <span>コントラスト: <input type="range" id="filter-contrast" min="0" max="200" value="100"></span>
+      <span>モノクロ: <input type="range" id="filter-grayscale" min="0" max="100" value="0"></span>
+      <span>セピア: <input type="range" id="filter-sepia" min="0" max="100" value="0"></span>
+      <span>色相回転: <input type="range" id="filter-hue" min="0" max="360" value="0">度</span>
+      <span>ぼかし: <input type="range" id="filter-blur" min="0" max="20" value="0">px</span>
+      <span>彩度: <input type="range" id="filter-saturate" min="0" max="200" value="100"></span>
+      <span>反転: <input type="range" id="filter-invert" min="0" max="100" value="0"></span>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 変形設定パネル -->
+    <div id="panel-transform" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>素材変形 (2D/3D回転・拡大)</h3>
+        <button id="reset-trans-btn" class="btn btn-secondary panel-header-btn">リセット</button>
+      </div>
+
+      <span>拡大率: <input type="range" id="trans-scale" min="10" max="300" value="100"><span id="val-trans-scale" class="val-badge">100%</span></span>
+      <span>2D回転: <input type="range" id="trans-rotate" min="-180" max="180" value="0"><span id="val-trans-rotate" class="val-badge">0度</span></span>
+      <span>3D回転 X(縦傾き): <input type="range" id="trans-rotate-x" min="-180" max="180" value="0"><span id="val-trans-rotate-x" class="val-badge">0度</span></span>
+      <span>3D回転 Y(横傾き): <input type="range" id="trans-rotate-y" min="-180" max="180" value="0"><span id="val-trans-rotate-y" class="val-badge">0度</span></span>
+      <span>位置 (横 X): <input type="range" id="trans-x" min="-500" max="500" value="0"><span id="val-trans-x" class="val-badge">0px</span></span>
+      <span>位置 (縦 Y): <input type="range" id="trans-y" min="-500" max="500" value="0"><span id="val-trans-y" class="val-badge">0px</span></span>
+
+      <!-- ★ 物理判定セクション（アニメーション連動モードを追加） -->
+      <span class="sub-panel-section-title">他素材との重なり・当たり判定</span>
+      <div class="setting-group-box">
+        <span>配置モード:
+          <select id="phys-mode-select" class="dropdown dropdown-wide">
+            <option value="none" selected>重なり許可 (自由に重ねる・標準)</option>
+            <option value="dynamic">手動押し出し (ドラッグ時に避ける)</option>
+            <option value="animated">アニメーション連動 (動きに合わせて衝突・押し出し)</option>
+            <option value="static">固定壁 (動かない障害物にする)</option>
+          </select>
+        </span>
+        <span id="row-phys-bounce" class="hidden">反発の強さ: 
+          <input type="range" id="phys-bounce-rate" min="0" max="100" value="40">
+          <span id="val-phys-bounce" class="val-badge">40%</span>
+        </span>
+      </div>
+
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 音量・ピッチ・イコライザー調整パネル -->
+    <div id="panel-audio" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>音量・音質 (EQ / コンプレッサー)</h3>
+        <button id="reset-audio-btn" class="btn btn-secondary panel-header-btn">リセット</button>
+      </div>
+      <span>動画の音量: <input type="range" id="vol-video" min="0" max="200" value="100"><span id="val-vol-video" class="val-badge">100%</span></span>
+      <span>BGMの音量: <input type="range" id="vol-bgm" min="0" max="200" value="100"><span id="val-vol-bgm" class="val-badge">100%</span></span>
+      <span>ピッチ(音高/速度): <input type="range" id="pitch-rate" min="50" max="200" value="100"><span id="val-pitch-rate" class="val-badge">100%</span></span>
+      <span>フェードイン(秒): <input type="range" id="audio-fade-in" min="0" max="5.0" step="0.1" value="0"><span id="val-audio-fade-in" class="val-badge">0.0s</span></span>
+      <span>フェードアウト(秒): <input type="range" id="audio-fade-out" min="0" max="5.0" step="0.1" value="0"><span id="val-audio-fade-out" class="val-badge">0.0s</span></span>
+
+      <!-- 3バンドイコライザー (3-Band EQ) -->
+      <span class="sub-panel-section-title">3バンド・イコライザー (選択クリップ)</span>
+      <div class="setting-group-box">
+        <span>低音 (Bass / 100Hz):
+          <input type="range" id="eq-low" min="-15" max="15" value="0">
+          <span id="val-eq-low" class="val-badge">0dB</span>
+        </span>
+        <span>中音・声 (Mid / 1kHz):
+          <input type="range" id="eq-mid" min="-15" max="15" value="0">
+          <span id="val-eq-mid" class="val-badge">0dB</span>
+        </span>
+        <span>高音 (Treble / 8kHz):
+          <input type="range" id="eq-high" min="-15" max="15" value="0">
+          <span id="val-eq-high" class="val-badge">0dB</span>
+        </span>
+      </div>
+
+      <!-- 音圧コンプレッサー (Dynamics Compressor) -->
+      <span class="sub-panel-section-title">音圧ブースト (コンプレッサー)</span>
+      <div class="setting-group-box">
+        <span>コンプレッサー有効化:
+          <input type="checkbox" id="audio-comp-enabled" class="checkbox-large">
+        </span>
+      </div>
+
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- クロマキー設定パネル -->
+    <div id="panel-chroma" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>クロマキー設定 (背景透過)</h3>
+        <button id="reset-chroma-btn" class="btn btn-secondary panel-header-btn">リセット</button>
+      </div>
+      <span>クロマキーを有効化: <input type="checkbox" id="chroma-enabled" class="checkbox-large"></span>
+      <span>透過する色: <input type="color" id="chroma-color" value="#00ff00"></span>
+      <span>許容範囲 (広さ): <input type="range" id="chroma-tolerance" min="5" max="150" value="40"><span id="val-chroma-tolerance" class="val-badge">40</span></span>
+      <span>なめらかさ (フチ): <input type="range" id="chroma-smoothness" min="0" max="50" value="10"><span id="val-chroma-smoothness" class="val-badge">10</span></span>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- トランジション設定パネル -->
+    <div id="panel-transition" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>トランジション (つなぎ目効果)</h3>
+      </div>
+      <span>切り替え効果:
+        <select id="trans-effect-type" class="dropdown">
+          <option value="crossfade">クロスディゾルブ (溶け合い)</option>
+          <option value="fadeblack">暗転 (フェード・トゥ・ブラック)</option>
+          <option value="slideLeft">スライド (左へ)</option>
+          <option value="zoom">ズーム切り替え</option>
+          <option value="flip">3Dフリップ回転</option>
+          <option value="spin">スピン切り替え</option>
+          <option value="none">解除 (なし)</option>
+        </select>
+      </span>
+      <span>効果の時間 (秒):
+        <input type="range" id="trans-duration-slider" min="0.2" max="2.0" step="0.1" value="0.6">
+        <span id="val-trans-duration" class="val-badge">0.6s</span>
+      </span>
+      <button id="apply-transition-btn" class="btn btn-accent btn-panel-action">2つの素材間に適用</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 専用の整列・配置パネル (Align & Distribute) -->
+    <div id="panel-align" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>整列・配置</h3>
+      </div>
+
+      <!-- 1. 整列の基準選択 -->
+      <div class="setting-group-box">
+        <span>整列の基準:
+          <select id="align-anchor-mode" class="dropdown dropdown-wide">
+            <option value="key" selected>キーオブジェクト (主軸の素材)</option>
+            <option value="group">選択範囲の平均中心 (互いの中心)</option>
+            <option value="canvas">画面全体 (キャンバス基準)</option>
+          </select>
+        </span>
+        <!-- 現在の主軸素材名リアルタイム表示 -->
+        <div id="align-key-target-info" class="align-key-badge">
+          基準(主軸): [ 未選択 ]
+        </div>
+      </div>
+
+      <!-- 2. 水平方向の整列 -->
+      <span>水平方向 (左右):
+        <div class="flex-btn-group">
+          <button id="btn-align-left" class="btn btn-secondary">左揃え</button>
+          <button id="btn-align-hcenter" class="btn btn-secondary">左右中央</button>
+          <button id="btn-align-right" class="btn btn-secondary">右揃え</button>
+        </div>
+      </span>
+
+      <!-- 3. 垂直方向の整列 -->
+      <span>垂直方向 (上下):
+        <div class="flex-btn-group">
+          <button id="btn-align-top" class="btn btn-secondary">上揃え</button>
+          <button id="btn-align-vcenter" class="btn btn-secondary">上下中央</button>
+          <button id="btn-align-bottom" class="btn btn-secondary">下揃え</button>
+        </div>
+      </span>
+
+      <!-- 4. 等間隔配置 (3個以上選択時) -->
+      <span>等間隔に均等配置:
+        <div class="flex-btn-group">
+          <button id="btn-distribute-h" class="btn btn-secondary">左右均等</button>
+          <button id="btn-distribute-v" class="btn btn-secondary">上下均等</button>
+        </div>
+      </span>
+
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 音楽・効果音 (Song Maker 作曲スタジオ) -->
+    <div id="panel-audio-gen" class="sub-panel hidden song-maker-panel">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>BGM 作曲スタジオ</h3>
+        <button id="btn-sm-clear" class="btn btn-secondary panel-header-btn">全消去</button>
+      </div>
+
+      <!-- 1. ワンクリック自動作曲ボックス -->
+      <div class="sm-section-box accent-box">
+        <div class="sm-auto-row">
+          <span class="sm-section-label">自動作曲 (ジャンル指定生成):</span>
+          <div class="flex-btn-group">
+            <select id="sm-auto-genre" class="dropdown dropdown-sm-genre">
+              <option value="lofi" selected>Lo-Fi HipHop</option>
+              <option value="synthwave">Synthwave</option>
+              <option value="chiptune">8-bit レトロ</option>
+              <option value="ambient">Chill/環境音</option>
+            </select>
+            <button id="btn-sm-gen-bgm" class="btn btn-accent btn-sm-auto-gen">生成してタイムラインに追加</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 手動作曲シーケンサー -->
+      <div class="sm-section-box">
+        <span class="sm-manual-title">手動作曲シーケンサー (マス目をタップして打ち込み):</span>
+        
+        <!-- グリッドコンテナ -->
+        <div class="song-maker-scroll-wrap">
+          <div id="song-maker-grid" class="song-maker-grid"></div>
+        </div>
+
+        <!-- シーケンサー詳細設定バー -->
+        <div class="song-maker-controls">
+          <button id="btn-sm-play" class="btn btn-primary btn-sm-preview-play">試聴再生</button>
+
+          <span>音色:
+            <select id="sm-instrument" class="dropdown dropdown-sm-short">
+              <option value="marimba" selected>マリンバ</option>
+              <option value="synth">シンセ</option>
+              <option value="piano">ピアノ</option>
+              <option value="chiptune">8-bit</option>
+            </select>
+          </span>
+
+          <span>ドラム:
+            <select id="sm-drum-kit" class="dropdown dropdown-sm-short">
+              <option value="electronic" selected>電子</option>
+              <option value="acoustic">生ドラム</option>
+            </select>
+          </span>
+
+          <span>音階:
+            <select id="sm-scale-mode" class="dropdown dropdown-sm-mid">
+              <option value="major" selected>メジャー (明)</option>
+              <option value="minor">マイナー (暗)</option>
+              <option value="penta">和風 (ペンタ)</option>
+            </select>
+          </span>
+
+          <span>音域:
+            <select id="sm-octave" class="dropdown dropdown-sm-short">
+              <option value="high">高音域</option>
+              <option value="mid" selected>中音域</option>
+              <option value="low">低音域</option>
+            </select>
+          </span>
+
+          <span>テンポ:
+            <input type="range" id="sm-bpm" min="60" max="180" value="120" class="input-sm-bpm">
+            <span id="val-sm-bpm" class="val-badge val-badge-narrow">120</span>
+          </span>
+
+          <span>小節数:
+            <input type="number" id="sm-bars-input" min="1" max="500" value="4" class="input-sm-bars" title="小節数を指定">
+          </span>
+          <button id="btn-sm-fit-video" class="btn btn-secondary panel-header-btn" title="動画の長さにぴったり合わせる">動画に合わせる</button>
+        </div>
+
+        <button id="btn-sm-add-timeline" class="btn btn-accent btn-panel-action">
+          作った曲をタイムラインにBGMとして追加
+        </button>
+      </div>
+
+      <!-- 3. 効果音 (SE) 即時挿入ツールバー -->
+      <div class="sm-se-toolbar">
+        <span class="sm-section-label">効果音 (SE) 挿入:</span>
+        <select id="se-preset-type" class="dropdown dropdown-sm-se">
+          <option value="coin">コイン (ピロリン)</option>
+          <option value="laser">レーザー (シュピッ)</option>
+          <option value="explosion">爆発 (ドカーン)</option>
+          <option value="jump">ジャンプ (ピョン)</option>
+          <option value="powerup">パワーアップ</option>
+          <option value="hit">打撃 (ズシッ)</option>
+          <option value="whoosh">風切り (シュッ)</option>
+          <option value="click">決定クリック</option>
+        </select>
+        <button id="btn-play-se-preview" class="btn btn-secondary panel-header-btn">試聴</button>
+        <button id="btn-add-se-timeline" class="btn btn-secondary btn-se-add">+ 再生針の位置に追加</button>
+      </div>
+
+      <button class="btn-close" onclick="document.getElementById('panel-audio-gen').classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 図形挿入・調整パネル (強化版) -->
+    <div id="panel-shape" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>図形 & フレーム設定</h3>
+      </div>
+      <span>種類:
+        <select id="shape-type" class="dropdown">
+          <option value="rect" selected>四角形 (長方形 / ボックス)</option>
+          <option value="rounded-rect">角丸四角形 (Rounded Box)</option>
+          <option value="circle">円形 (Circle)</option>
+          <option value="triangle">三角形 (Triangle)</option>
+          <option value="star">星型 (Star)</option>
+          <option value="heart">ハート (Heart)</option>
+          <option value="diamond">菱形 (Diamond)</option>
+          <option value="hexagon">六角形 (Hexagon)</option>
+          <option value="arrow">矢印 (Arrow)</option>
+          <option value="speech-bubble">吹き出し (Speech Bubble)</option>
+        </select>
+      </span>
+      <span>塗りタイプ:
+        <select id="shape-fill-type" class="dropdown">
+          <option value="solid" selected>単色カラー</option>
+          <option value="linear">線形グラデーション</option>
+          <option value="radial">放射グラデーション</option>
+        </select>
+      </span>
+      <span id="shape-color-single-row">図形の背景色: <input type="color" id="shape-color" value="#00f0ff"></span>
+      <div id="shape-gradient-group" class="setting-group-box hidden">
+        <div>
+          <span>開始色: <input type="color" id="shape-grad-color1" value="#00f0ff"></span>
+          <span>終了色: <input type="color" id="shape-grad-color2" value="#ff007f"></span>
+        </div>
+        <div>
+          <span>角度: <input type="range" id="shape-grad-angle" min="0" max="360" value="45"><span id="val-shape-grad-angle" class="val-badge">45°</span></span>
+        </div>
+      </div>
+      <span>大きさ (px): <input type="range" id="shape-size" min="50" max="1000" value="250"><span id="val-shape-size" class="val-badge">250px</span></span>
+
+      <button id="add-shape-btn" class="btn btn-accent btn-panel-action">図形をタイムラインに追加</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- ★ 統合版: 3Dオブジェクト設定＆追加パネル -->
+    <div id="panel-3d" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3 id="label-3d-panel-title">3Dオブジェクト設定</h3>
+        <button id="reset-3d-btn" class="btn btn-secondary panel-header-btn">初期化</button>
+      </div>
+
+      <span>立体形状 / パーティクル:
+        <select id="3d-shape-type" class="dropdown">
+          <optgroup label="基本立体">
+            <option value="plane" selected>平面板 (3Dカード / パネル)</option>
+            <option value="cube">立方体 (サイコロ)</option>
+            <option value="sphere">球体 (ボール)</option>
+            <option value="torus">ドーナツ型 (リング)</option>
+            <option value="cylinder">円柱 (ドラム缶)</option>
+            <option value="cone">コーン (三角錐)</option>
+            <option value="pyramid">ピラミッド (四角錐)</option>
+          </optgroup>
+          <optgroup label="シンボル形状">
+            <option value="star">星型 (立体スター)</option>
+            <option value="heart">ハート (立体ハート)</option>
+          </optgroup>
+          <optgroup label="3Dパーティクル">
+            <option value="particles-fire">炎・火の粉</option>
+            <option value="particles-snow">粉雪エフェクト</option>
+            <option value="particles-rain">雨エフェクト</option>
+            <option value="particles-magic">魔法オーラ</option>
+            <option value="particles-bubbles">水中泡</option>
+            <option value="particles-sparks">火花パーティクル</option>
+            <option value="particles-stars">星屑・銀河</option>
+            <option value="particles-confetti">紙吹雪</option>
+          </optgroup>
+        </select>
+      </span>
+
+      <span>質感プリセット:
+        <select id="3d-shader-type" class="dropdown">
+          <option value="standard" selected>標準 (リアルPBR)</option>
+          <option value="neon">ネオン発光 (自発光)</option>
+          <option value="glass">半透明クリスタル (ガラス)</option>
+        </select>
+      </span>
+
+      <span>グラデーション質感: <input type="checkbox" id="3d-gradient-enabled" class="checkbox-large"></span>
+      <div id="3d-gradient-group" class="setting-group-box hidden">
+        <div>
+          <span>開始色: <input type="color" id="3d-grad-color1" value="#00f0ff"></span>
+          <span>終了色: <input type="color" id="3d-grad-color2" value="#7928ca"></span>
+        </div>
+      </div>
+
+      <span>ベースカラー: <input type="color" id="3d-color" value="#00f0ff"></span>
+      <span>透明度 (不透明度): <input type="range" id="3d-opacity" min="5" max="100" value="100"><span id="val-3d-opacity" class="val-badge">100%</span></span>
+      <span>発光の強さ: <input type="range" id="3d-emissive" min="0" max="100" value="20"><span id="val-3d-emissive" class="val-badge">20%</span></span>
+      <span>金属感 (メタリック): <input type="range" id="3d-metalness" min="0" max="100" value="40"><span id="val-3d-metalness" class="val-badge">40%</span></span>
+      <span>表面の粗さ (ラフネス): <input type="range" id="3d-roughness" min="0" max="100" value="30"><span id="val-3d-roughness" class="val-badge">30%</span></span>
+      <span>パーティクル粒の大きさ: <input type="range" id="3d-particle-size" min="1" max="50" value="8"><span id="val-3d-particle-size" class="val-badge">8px</span></span>
+      <span>ワイヤーフレーム (骨組み): <input type="checkbox" id="3d-wireframe" class="checkbox-large"></span>
+
+      <!-- 未選択時のみ表示されるタイムライン追加ボタン -->
+      <button id="add-3d-btn" class="btn btn-accent btn-panel-action">+ 3Dオブジェクトをタイムラインに追加</button>
+
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- アニメーション設定パネル -->
+    <div id="panel-anim" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>アニメーション & 自由キーフレーム</h3>
+      </div>
+      
+      <!-- 自由キーフレーム操作エリア -->
+      <div class="setting-group-box">
+        <span>自由キーフレーム (位置・拡大・透明度):
+          <button id="btn-add-keyframe" class="btn btn-accent panel-header-btn">+ 現在位置にキーフレーム打刻</button>
+        </span>
+        <div id="clip-keyframe-list" class="caption-cue-list"></div>
+      </div>
+
+      <span class="sub-panel-section-title">プリセット動作</span>
+      <div class="setting-group-box">
+        <span>1. 登場 (In): 
+          <select id="anim-in-type" class="dropdown"></select>
+        </span>
+        <span>2. 途中 (Main): 
+          <select id="anim-main-type" class="dropdown"></select>
+        </span>
+        <span>3. 退場 (Out): 
+          <select id="anim-out-type" class="dropdown"></select>
+        </span>
+      </div>
+
+      <!-- 途中アニメーション追加コントロール（3D系モーション完備） -->
+      <div class="flex-btn-group">
+        <select id="add-main-anim-type" class="dropdown flex-1">
+          <optgroup label="3D立体モーション">
+            <option value="spin3D">3D自転 (Y軸スピン)</option>
+            <option value="tumble3D">3D宙返り (無重力3軸回転)</option>
+            <option value="orbit3D">3D公転 (手前と奥の周回)</option>
+            <option value="drill3D">3Dドリル (超高速スピン)</option>
+            <option value="wobble3D">3Dプルプル揺れ</option>
+          </optgroup>
+          <optgroup label="2D基本モーション">
+            <option value="float" selected>ゆらゆら浮遊</option>
+            <option value="floatSpin">浮遊＋自転</option>
+            <option value="pulse">パルス (鼓動)</option>
+            <option value="heartbeat">ハートビート (2段脈動)</option>
+            <option value="hop">ジャンプ (跳ねる)</option>
+            <option value="spin">2D回転</option>
+            <option value="shake">シェイク (振動)</option>
+            <option value="glitch">グリッチ (ブレノイズ)</option>
+            <option value="breathe">呼吸 (ブリーズ)</option>
+            <option value="swing">ブランコ揺れ</option>
+            <option value="flash">点滅</option>
+            <option value="zoom">拡大/縮小</option>
+          </optgroup>
+        </select>
+        <button id="btn-add-main-anim" class="btn btn-secondary panel-header-btn">+ 効果追加</button>
+      </div>
+
+      <!-- 重ねがけ途中アニメーションリスト -->
+      <div id="main-anim-list" class="anim-group-box"></div>
+
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 速度・逆再生・無音カット調整パネル -->
+    <div id="panel-speed-process" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>速度調整 & 無音自動カット</h3>
+      </div>
+
+      <div class="setting-group-box">
+        <span>再生速度 (スピード):
+          <select id="clip-speed-select" class="dropdown">
+            <option value="0.25">0.25x (超スロー)</option>
+            <option value="0.5">0.5x (スロー)</option>
+            <option value="0.75">0.75x</option>
+            <option value="1.0" selected>1.0x (標準速度)</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x (早送り)</option>
+            <option value="2.0">2.0x (2倍速)</option>
+            <option value="4.0">4.0x (4倍速)</option>
+          </select>
+        </span>
+      </div>
+
+      <span class="sub-panel-section-title">無音区間自動ジャンプカット</span>
+      <div class="setting-group-box">
+        <span>無音判定の感度:
+          <select id="silence-threshold-select" class="dropdown">
+            <option value="0.015">高感度 (小さな声も残す)</option>
+            <option value="0.025" selected>標準</option>
+            <option value="0.045">低感度 (はっきりした発話のみ)</option>
+          </select>
+        </span>
+        <button id="btn-run-silence-cut" class="btn btn-accent btn-panel-action">無音部分を自動検出して一括カット</button>
+      </div>
+
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- マスク & 描画モード (ブレンド) 設定パネル -->
+    <div id="panel-mask-blend" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>シェイプマスク & 描画モード</h3>
+      </div>
+
+      <div class="setting-group-box">
+        <span>切り抜きシェイプマスク:
+          <select id="clip-mask-type" class="dropdown dropdown-wide">
+            <option value="none" selected>なし (四角形)</option>
+            <option value="circle">円形マスク (丸型ワイプ)</option>
+            <option value="star">星型マスク</option>
+            <option value="heart">ハート型マスク</option>
+          </select>
+        </span>
+        <span>描画モード (ブレンド合成):
+          <select id="clip-blend-mode" class="dropdown dropdown-wide">
+            <option value="source-over" selected>通常 (標準)</option>
+            <option value="screen">スクリーン (発光合成)</option>
+            <option value="multiply">乗算 (暗部合成)</option>
+            <option value="overlay">オーバーレイ (高コントラスト)</option>
+            <option value="lighter">加算 (ネオン光彩)</option>
+          </select>
+        </span>
+      </div>
+
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- ストック素材ライブラリパネル (SVGベクター素材対応) -->
+    <div id="panel-stock-library" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>ストックベクター素材 (SVG)</h3>
+      </div>
+
+      <div class="setting-group-box">
+        <span>素材アイコン:
+          <select id="stock-sticker-select" class="dropdown dropdown-wide">
+            <optgroup label="1. YouTube & SNS・配信">
+              <option value="svg-subscribe" selected>登録ボタン (Subscribe)</option>
+              <option value="svg-like">いいね (Good手)</option>
+              <option value="svg-dislike">低評価 (Bad手)</option>
+              <option value="svg-bell">通知ベル (Remind)</option>
+              <option value="svg-share">シェア・共有</option>
+              <option value="svg-live">LIVE 配信中バッジ</option>
+            </optgroup>
+            <optgroup label="2. 感情 & エモート・リアクション">
+              <option value="svg-heart">ハート (Love)</option>
+              <option value="svg-fire">炎 (HOT/神回)</option>
+              <option value="svg-skull">ドクロ (即死/激ムズ)</option>
+              <option value="svg-sweat">汗マーク (焦り/ピンチ)</option>
+              <option value="svg-anger">怒りマーク (キレ)</option>
+              <option value="svg-idea">ひらめき電球 (解説)</option>
+            </optgroup>
+            <optgroup label="3. マンガ・演出・効果線">
+              <option value="svg-speedlines">マンガ集中線 (インパクト)</option>
+              <option value="svg-poof">爆発フキダシ (Shock)</option>
+              <option value="svg-sparkle">キラキラ (光彩)</option>
+              <option value="svg-star4">四つ星クロス (きらめき)</option>
+              <option value="svg-popper">クラッカー (祝/達成)</option>
+              <option value="svg-dialog">角丸吹き出し</option>
+            </optgroup>
+            <optgroup label="4. 指示 & 記号・カーソル">
+              <option value="svg-point-hand">指差しアイコン</option>
+              <option value="svg-arrow">注目ネオン矢印</option>
+              <option value="svg-cursor">マウスポインタ</option>
+              <option value="svg-check">チェック (正解/OK)</option>
+              <option value="svg-cross">バツ印 (不正解/NG)</option>
+              <option value="svg-warning">警告マーク (注意)</option>
+              <option value="svg-question">はてな (疑問/？)</option>
+            </optgroup>
+            <optgroup label="5. バッジ & 装飾・トロフィー">
+              <option value="svg-crown">王冠 (1位/TOP)</option>
+              <option value="svg-trophy">トロフィー (優勝/王者)</option>
+              <option value="svg-badge-star">ゴールドスターバッジ</option>
+              <option value="svg-leaf">初心者マーク (若葉)</option>
+            </optgroup>
+          </select>
+        </span>
+        <span>素材カラー (ベクター着色):
+          <input type="color" id="stock-sticker-color" value="#00f0ff">
+        </span>
+        <button id="btn-add-stock-sticker" class="btn btn-accent btn-panel-action">+ タイムラインに追加</button>
+      </div>
+
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- テキスト編集パネル -->
+    <div id="panel-caption-editor" class="sub-panel hidden">
+      <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
+      <div class="sub-panel-header">
+        <h3>テキスト編集</h3>
+        <div class="flex-btn-group">
+          <select id="text-style-preset" class="dropdown dropdown-wide" style="font-size: 11px;">
+            <option value="" selected disabled>スタイルプリセット選択</option>
+            <option value="youtube_red">YouTube バラエティ (白文字+黒フチ+赤外フチ)</option>
+            <option value="youtube_gold">YouTube 豪華ゴールド (金グラデ+黒フチ+金外フチ)</option>
+            <option value="neon_cyber">ネオンサイバー (シアン光彩+黒フチ)</option>
+            <option value="retro_game">レトロドット (黄色+黒極太フチ)</option>
+            <option value="cinematic_white">シネマミニマル (白文字+ドロップシャドウ)</option>
+            <option value="warning_danger">警告・注意テロップ (黒文字+黄グラデ+赤外フチ)</option>
+          </select>
+          <button id="btn-apply-text-style" class="btn btn-accent panel-header-btn">適用</button>
+          <button id="btn-apply-style-all-captions" class="btn btn-secondary panel-header-btn" title="すべての字幕に一括適用">全字幕に適用</button>
+        </div>
+      </div>
+
+      <!-- 1. 入力エディタ -->
+      <div id="quill-editor"></div>
+
+      <!-- 2. インライン高密度装飾設定 -->
+      <div class="setting-group-box">
+        <div class="setting-row">
+          <span class="row-label">第1フチ</span>
+          <input type="checkbox" id="text-stroke-enabled" checked class="checkbox-large">
+          <input type="color" id="text-stroke-color" value="#000000">
+          <input type="range" id="text-stroke-width" min="0" max="30" value="6">
+          <span id="val-text-stroke-width" class="val-badge">6px</span>
+        </div>
+
+        <div class="setting-row">
+          <span class="row-label">二重フチ</span>
+          <input type="checkbox" id="text-stroke2-enabled" class="checkbox-large">
+          <input type="color" id="text-stroke2-color" value="#ff0000">
+          <input type="range" id="text-stroke2-width" min="0" max="50" value="14">
+          <span id="val-text-stroke2-width" class="val-badge">14px</span>
+        </div>
+
+        <div class="setting-row">
+          <span class="row-label">グラデーション</span>
+          <input type="checkbox" id="text-grad-enabled" class="checkbox-large">
+          <span>上</span><input type="color" id="text-grad-color1" value="#ffffff">
+          <span>下</span><input type="color" id="text-grad-color2" value="#ffcc00">
+        </div>
+
+        <div class="setting-row">
+          <span class="row-label">ネオングロー</span>
+          <input type="checkbox" id="text-glow-enabled" class="checkbox-large">
+          <input type="color" id="text-glow-color" value="#00f0ff">
+          <input type="range" id="text-glow-blur" min="0" max="40" value="15">
+          <span id="val-text-glow-blur" class="val-badge">15px</span>
+        </div>
+      </div>
+
+      <!-- 3. 時間ごとのテキスト変化 -->
+      <div class="caption-cue-section">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px; font-weight:bold; color:var(--text-sub);">時間ごとの文字変化 (キーフレーム)</span>
+          <button id="btn-add-text-cue" class="btn btn-secondary panel-header-btn">+ 現在位置に追加</button>
+        </div>
+        <div id="caption-cue-list" class="caption-cue-list"></div>
+      </div>
+
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 台本・スクリプト一括編集パネル (高度DSLテンプレート) -->
+    <div id="panel-script-editor" class="sub-panel hidden">
+      <div class="sub-panel-header">
+        <h3>台本・スクリプト一括編集 (DSL)</h3>
+      </div>
+      
+      <!-- 実践テンプレート選択バー -->
+      <div class="script-tutorial-bar">
+        <span class="script-tutorial-label">構成テンプレート:</span>
+        <select id="select-script-tutorial" class="dropdown flex-1">
+          <option value="preset1">1. ショート動画 / TikTok テロップ構成</option>
+          <option value="preset2">2. ポップ＆グリッチ アニメーション構成</option>
+          <option value="preset3">3. 3D立体空間＆パーティクル演出構成</option>
+          <option value="preset4">4. BGM＆効果音同期オープニング</option>
+          <option value="preset_rta">5. biimシステム風 (解説枠 構成)</option>
+        </select>
+        <button id="btn-load-tutorial" class="btn btn-secondary panel-header-btn">適用</button>
+      </div>
+
+      <textarea id="timeline-script-textarea" class="script-textarea" spellcheck="false" placeholder="// ここに台本を入力して「タイムラインに反映」を押します"></textarea>
+
+      <div class="script-btn-group">
+        <button id="btn-apply-script" class="btn btn-accent btn-script-apply">タイムラインに反映</button>
+        <button id="btn-copy-script" class="btn btn-secondary panel-header-btn">台本をコピー</button>
+      </div>
+
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+    </div>
+
+    <!-- 6. 動的コンテキストツールバー (操作状態によってJSで自動生成されるため空でOK) -->
+    <footer class="toolbar" id="context-toolbar">
+    </footer>
+  </div>
+  <script src="animation.js" defer></script>
+  <script src="audio-synth.js" defer></script>
+  <script src="three-engine.js" defer></script>
+  <script src="keyframe-engine.js" defer></script>
+  <script src="video-processor.js" defer></script>
+  <script src="stock-library.js" defer></script>
+  <script src="script-dsl.js" defer></script>
+  <script src="auto-subtitles.js" defer></script>
+  <script src="screen-recorder.js" defer></script>
+  <script src="export-engine.js" defer></script>
+  <script src="project-manager.js" defer></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

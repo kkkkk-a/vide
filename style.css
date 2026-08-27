@@ -1,0 +1,2353 @@
+/* ==========================================================================
+   Mobile & Desktop Video Editor Pro - Optimized Design System
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. CSS Variables (テーマ・色・サイズ・アニメーション定義)
+   -------------------------------------------------------------------------- */
+:root {
+  /* ベースカラー */
+  --bg-dark-0: #09090b;       /* 最下層背景 */
+  --bg-dark-1: #141417;       /* タイムライン・キャンバス背景 */
+  --bg-dark-2: #18181b;       /* ヘッダー・パネル背景 */
+  --bg-dark-3: #27272a;       /* ボタン・入力領域背景 */
+  --bg-dark-4: #3f3f46;       /* 枠線・ホバー背景 */
+  --bg-dark-5: #52525b;       /* 強調枠線 */
+
+  /* アクセントカラー */
+  --accent-cyan: #00f0ff;     /* メインネオンアクセント */
+  --accent-red: #ff2d55;      /* 再生針・強調 */
+  --accent-green: #30d158;    /* 音声トラック用 */
+  --accent-purple: #af52de;   /* 画像・字幕用 */
+  --accent-blue: #0284c7;     /* 動画トラック用 */
+  --accent-yellow: #ffcc00;   /* 警告・アクティブ */
+  
+  /* クリップ固有カラー */
+  --clip-video: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
+  --clip-image: linear-gradient(180deg, #9333ea 0%, #7e22ce 100%);
+  --clip-audio: linear-gradient(180deg, #16a34a 0%, #15803d 100%);
+  --clip-text:  linear-gradient(180deg, #8b5cf6 0%, #6d28d9 100%);
+  --clip-bg:    linear-gradient(180deg, #3f3f46 0%, #27272a 100%);
+
+  /* テキストカラー */
+  --text-main: #ffffff;
+  --text-muted: #a1a1aa;
+  --text-sub: #71717a;
+
+  /* フォントファミリー変数 */
+  --font-main: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-rounded: 'M PLUS Rounded 1c', sans-serif;
+  --font-dot: 'DotGothic16', sans-serif;
+  --font-klee: 'Klee One', cursive;
+  --font-mincho: 'Shippori Mincho', serif;
+
+  /* サイズ定義 */
+  --header-height: 48px;
+  --controls-height: 44px;
+  --timeline-height: 200px;
+  --toolbar-height: 56px;
+  --subpanel-height: 280px;
+
+  /* レイヤー階層 (z-index トークン) */
+  --z-clip-base: 10;
+  --z-controls: 40;
+  --z-header: 50;
+  --z-toolbar: 50;
+  --z-fullscreen-btn: 60;
+  --z-ruler: 90;
+  --z-guide-line: 95;
+  --z-playhead: 100;
+  --z-clip-selected: 100;
+  --z-overlay: 250;
+  --z-panel: 300;
+  --z-theater: 5000;
+  --z-modal: 99999;
+  --z-loading: 999999;
+
+  /* トランジション */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+
+  /* シャドウ */
+  --shadow-panel: 0 -6px 24px rgba(0, 0, 0, 0.6);
+  --shadow-neon: 0 0 12px rgba(0, 240, 255, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   2. Global Reset & Base Styles
+   -------------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-dark-0);
+  color: var(--text-main);
+  font-family: var(--font-main);
+  touch-action: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-dark-0);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   3. Header Component
+   -------------------------------------------------------------------------- */
+.header {
+  height: var(--header-height);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+  background-color: var(--bg-dark-2);
+  border-bottom: 1px solid var(--bg-dark-3);
+  z-index: 50;
+  overflow-x: auto;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--bg-dark-4);
+  background-color: var(--bg-dark-3);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn:hover {
+  background-color: var(--bg-dark-4);
+  border-color: var(--bg-dark-5);
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn-primary {
+  background-color: #007aff;
+  border-color: #007aff;
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background-color: #0062cc;
+}
+
+.btn-secondary {
+  background-color: var(--bg-dark-3);
+  color: var(--text-main);
+}
+
+.btn-accent {
+  background-color: var(--accent-cyan);
+  color: #000000;
+  border: none;
+  font-weight: bold;
+  box-shadow: var(--shadow-neon);
+}
+
+.btn-accent:hover {
+  background-color: #33f3ff;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.dropdown {
+  background-color: var(--bg-dark-3);
+  color: var(--text-main);
+  border: 1px solid var(--bg-dark-4);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  outline: none;
+  max-width: 140px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.dropdown:focus {
+  border-color: var(--accent-cyan);
+}
+
+/* --------------------------------------------------------------------------
+   4. Preview Area
+   -------------------------------------------------------------------------- */
+.preview-container {
+  flex: 1;
+  min-height: 0 !important;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #000000;
+  overflow: hidden;
+  padding: 10px;
+}
+
+#preview-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: move;
+  border: 1px dashed rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+}
+
+.preview-container.drag-active {
+  border: 3px dashed var(--accent-cyan) !important;
+  background-color: rgba(0, 240, 255, 0.08) !important;
+}
+
+.drag-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(9, 9, 11, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 250;
+  color: var(--text-main);
+  gap: 12px;
+}
+
+/* 全画面を物理的に覆い尽くして操作を完全ロックするオーバーレイ */
+.loading-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(9, 9, 11, 0.82) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 999999 !important;
+  color: var(--text-main);
+  gap: 14px;
+  pointer-events: all !important; /* 背景へのクリック・ドラッグを完全吸収 */
+  user-select: none;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--bg-dark-4);
+  border-top: 3px solid var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   5. Control Bar (選択時も位置が動かない3区画固定レイアウト)
+   -------------------------------------------------------------------------- */
+.controls {
+  height: var(--controls-height);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+  background-color: #18181b;
+  border-top: 1px solid var(--bg-dark-3);
+  border-bottom: 1px solid var(--bg-dark-3);
+  z-index: 40;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 12px;
+}
+
+.controls::-webkit-scrollbar {
+  display: none;
+}
+
+.time-code {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  color: var(--accent-cyan);
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
+.time-code .label {
+  font-size: 10px;
+  color: var(--text-sub);
+  font-weight: bold;
+}
+
+#time-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--accent-cyan);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  width: 80px;
+  text-align: center;
+  border-radius: 4px;
+  outline: none;
+}
+
+#time-input:hover, #time-input:focus {
+  border-color: var(--accent-cyan);
+  background: var(--bg-dark-3);
+}
+
+.btn-play {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--accent-cyan);
+  border: none;
+  color: #000000;
+  font-size: 9px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-neon);
+  transition: transform var(--transition-fast), background-color var(--transition-fast);
+}
+
+.btn-play:hover {
+  background-color: #33f3ff;
+}
+
+.btn-play:active {
+  transform: scale(0.92);
+}
+
+.btn-play:disabled {
+  opacity: 0.3;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  background: var(--bg-dark-3);
+  border: 1px solid var(--bg-dark-4);
+  color: var(--text-muted);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background-color var(--transition-fast);
+  /* ★ ON/OFFの文字数差でも1pxも伸縮しないよう固定幅を確保 */
+  width: 86px;
+  flex-shrink: 0;
+  text-align: center;
+  white-space: nowrap;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.btn-icon:hover {
+  color: var(--text-main);
+  border-color: var(--bg-dark-5);
+}
+
+.btn-icon.active {
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.1);
+}
+
+/* --------------------------------------------------------------------------
+   6. Timeline System
+   -------------------------------------------------------------------------- */
+
+.timeline-container {
+  height: var(--timeline-height);
+  flex-shrink: 0;
+  background-color: var(--bg-dark-1);
+  position: relative;
+  overflow-y: auto;
+  overflow-x: auto;
+  border-top: 1px solid var(--bg-dark-3);
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.timeline-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.timeline-container::-webkit-scrollbar-thumb {
+  background: var(--bg-dark-4);
+  border-radius: 3px;
+}
+
+/* 上部固定タイムルーラー */
+.time-ruler {
+  position: sticky;
+  top: 0;
+  left: 0;
+  height: 26px;
+  background-color: #141417 !important;
+  border-bottom: 1px solid #27272a;
+  display: block;
+  z-index: 90;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* 再生針 (0秒の初期位置 156px) */
+.playhead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  min-height: 1000px;
+  background-color: var(--accent-red);
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 0 8px rgba(255, 45, 85, 0.8);
+  transform: translate3d(156px, 0, 0);
+  will-change: transform;
+}
+
+.playhead-head {
+  width: 12px;
+  height: 12px;
+  background-color: var(--accent-red);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  position: absolute;
+  top: 0;
+  left: -5px;
+}
+
+/* タイムライントラックコンテナ */
+.timeline-tracks {
+  position: relative;
+  display: inline-block;
+  min-height: calc(100% - 26px);
+  padding-top: 4px;
+  padding-bottom: 20px;
+  box-sizing: content-box;
+}
+
+/* タイムライン矩形範囲選択枠 (ラバーバンド) */
+.timeline-selection-marquee {
+  position: absolute;
+  border: 1.5px solid var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.15);
+  pointer-events: none;
+  z-index: 150;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+/* 1行一体型トラック行 (右端にクッキリ目立つシアンの終端ラインを表示) */
+.video-track-row {
+  height: 48px;
+  margin-top: 6px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.025);
+  border-top: 1px solid #2e2e33;
+  border-bottom: 1px solid #2e2e33;
+  border-right: 3px solid var(--accent-cyan);
+  box-shadow: 2px 0 8px rgba(0, 240, 255, 0.35);
+  box-sizing: border-box;
+}
+
+/* トラック行の左端固定操作ヘッダー */
+.track-header-cell {
+  position: sticky;
+  left: 0;
+  width: 140px;
+  min-width: 140px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: #18181b;
+  border-right: 1px solid #27272a;
+  border-left: 3px solid var(--accent-cyan);
+  z-index: 20;
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+.track-label-text {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--accent-cyan);
+  margin-right: 4px;
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+}
+
+.track-header-buttons {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.track-btn-toggle {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #a1a1aa;
+  font-size: 9px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1;
+  transition: all var(--transition-fast);
+}
+
+.track-btn-toggle:hover {
+  background: #3f3f46;
+  color: #ffffff;
+}
+
+.track-btn-toggle.active {
+  background: rgba(255, 45, 85, 0.25);
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+/* 右側：スクロールするタイムライン本体 */
+.timeline-scroll-wrapper {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.timeline-scroll-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+.timeline-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: var(--bg-dark-4);
+  border-radius: 3px;
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  min-height: 1000px;
+  background-color: var(--accent-red);
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 0 8px rgba(255, 45, 85, 0.8);
+  will-change: transform;
+}
+
+.playhead-head {
+  width: 12px;
+  height: 12px;
+  background-color: var(--accent-red);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  position: absolute;
+  top: 0;
+  left: -5px;
+}
+
+/* スナップ吸着ガイド線 */
+.snap-guide-line {
+  display: none !important;
+}
+
+/* タイムルーラー（固定上部目盛り） */
+.time-ruler {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 26px;
+  background-color: #18181b !important;
+  border-bottom: 1px solid #27272a;
+  display: block;
+  z-index: 90;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* タイムライントラックコンテナ */
+.timeline-tracks {
+  position: relative;
+  display: inline-block;
+  min-height: calc(100% - 26px);
+  padding-top: 4px;
+  padding-bottom: 20px;
+  box-sizing: content-box;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.ruler-tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 6px;
+  background-color: var(--bg-dark-4);
+}
+
+.ruler-tick.major {
+  height: 14px;
+  background-color: var(--text-sub);
+}
+
+.ruler-label {
+  position: absolute;
+  top: 2px;
+  font-size: 9px;
+  color: var(--text-sub);
+  font-family: ui-monospace, monospace;
+  transform: translateX(-50%);
+}
+
+.track {
+  height: 48px;
+  margin-top: 6px;
+  position: relative;
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+.sub-track {
+  height: 32px !important;
+  margin-top: 4px;
+}
+/* マルチトラック行（V1, V2, V3 - シャープな枠線・一体感のあるデザイン） */
+.video-track-row {
+  height: 48px;
+  margin-top: 6px;
+  position: relative;
+  background: rgba(255, 255, 255, 0.015);
+  border-top: 1px solid #27272a;
+  border-bottom: 1px solid #27272a;
+  border-left: none;
+  border-right: none;
+  box-sizing: border-box;
+}
+
+/* タイムラインクリップ基本構造 (シャープな角丸・高いコントラスト) */
+.timeline-clip {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  height: calc(100% - 2px);
+  background: var(--clip-video);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  cursor: grab;
+  touch-action: none;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  z-index: 10;
+  will-change: transform, width;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: opacity var(--transition-fast), filter var(--transition-fast);
+}
+
+.timeline-clip span {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block;
+  max-width: 100%;
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.timeline-clip:active {
+  cursor: grabbing;
+  opacity: 0.9;
+}
+
+/* クリップ種別カラー */
+.image-clip { background: var(--clip-image) !important; border-color: #c084fc !important; }
+.bg-clip    { background: var(--clip-bg) !important; border-color: var(--bg-dark-4) !important; }
+.audio-clip { background: var(--clip-audio) !important; border-color: #4ade80 !important; }
+.text-clip  { background: var(--clip-text) !important; border-color: #c084fc !important; }
+
+/* ★ 非表示（無効化）状態のクリップスタイル */
+.timeline-clip.is-muted-clip {
+  opacity: 0.3 !important;
+  filter: grayscale(80%) !important;
+  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.3), rgba(0,0,0,0.3) 10px, transparent 10px, transparent 20px) !important;
+}
+
+/* 音声波形キャンバス */
+.timeline-clip .waveform-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0.45;
+  z-index: 1;
+}
+
+/* トランジション設定済みクリップのインジケーター */
+.timeline-clip.has-transition {
+  border-color: var(--accent-cyan) !important;
+}
+
+/* トランジション適用区間を示す半透明リボン */
+.transition-ribbon {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.transition-ribbon.in {
+  left: 0;
+  background: linear-gradient(90deg, rgba(0, 240, 255, 0.45) 0%, rgba(0, 240, 255, 0.05) 100%);
+  border-right: 1.5px dashed var(--accent-cyan);
+}
+
+.transition-ribbon.out {
+  right: 0;
+  background: linear-gradient(270deg, rgba(0, 240, 255, 0.45) 0%, rgba(0, 240, 255, 0.05) 100%);
+  border-left: 1.5px dashed var(--accent-cyan);
+}
+
+/* トリミングハンドル */
+.trim-handle {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.trim-handle::after {
+  content: "||";
+  color: #000000;
+  font-size: 8px;
+  font-weight: bold;
+  letter-spacing: -1px;
+}
+
+.trim-handle.left { left: 0; border-radius: 5px 0 0 5px; }
+.trim-handle.right { right: 0; border-radius: 0 5px 5px 0; }
+
+/* --------------------------------------------------------------------------
+   7. 選択状態（Selection State）
+   -------------------------------------------------------------------------- */
+.timeline-container.has-selection .timeline-clip:not(.selected):not(.selected-primary) {
+  opacity: 0.4 !important;
+  filter: grayscale(50%) !important;
+}
+
+div.timeline-clip.selected {
+  border: 2px solid var(--accent-cyan) !important;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.6), inset 0 0 6px rgba(0, 240, 255, 0.2) !important;
+  z-index: 98 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* 主軸キーオブジェクトの強調発光スタイル */
+div.timeline-clip.selected-primary {
+  border: 2.5px solid #ffcc00 !important;
+  box-shadow: 0 0 20px rgba(255, 204, 0, 0.9), inset 0 0 8px rgba(255, 204, 0, 0.4) !important;
+  z-index: 100 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+div.timeline-clip.selected-primary::before {
+  content: "[主軸]";
+  position: absolute;
+  top: 2px;
+  right: 18px;
+  font-size: 8px;
+  background: #ffcc00;
+  color: #000000;
+  font-weight: bold;
+  padding: 0 3px;
+  border-radius: 2px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+div.timeline-clip.selected .trim-handle {
+  background-color: var(--accent-cyan) !important;
+}
+
+div.timeline-clip.selected-primary .trim-handle {
+  background-color: #ffcc00 !important;
+}
+
+div.timeline-clip.selected .trim-handle::after {
+  color: #000000 !important;
+}
+
+/* --------------------------------------------------------------------------
+   8. Footer Toolbar
+   -------------------------------------------------------------------------- */
+.toolbar {
+  height: var(--toolbar-height);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  background-color: var(--bg-dark-2);
+  border-top: 1px solid var(--bg-dark-3);
+  z-index: 50;
+  padding: 0 8px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow-x: auto;
+  white-space: nowrap;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.tool-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+.tool-btn:hover {
+  color: var(--text-main);
+}
+
+.tool-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* 現在開いているメニュー（フッターボタン）のアクティブ発光スタイル */
+.tool-btn.active {
+  color: var(--accent-cyan) !important;
+  font-weight: bold;
+}
+
+.tool-btn.active::after {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 3px;
+  background-color: var(--accent-cyan);
+  border-radius: 2px;
+  margin-top: 3px;
+  box-shadow: 0 0 8px var(--accent-cyan);
+}
+
+/* --------------------------------------------------------------------------
+   9. Sub-panels & Modals (全パネル共通・高さ共有リサイザブル設計)
+   -------------------------------------------------------------------------- */
+.sub-panel {
+  position: absolute;
+  bottom: var(--toolbar-height);
+  left: 0;
+  width: 100%;
+  height: var(--subpanel-height);
+  max-height: 75vh;
+  min-height: 160px;
+  overflow-y: auto;
+  background: rgba(20, 20, 23, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 10px 16px 16px 16px;
+  border-top: 1px solid var(--bg-dark-4);
+  z-index: 300;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+/* 上端ドラッグリサイズバー */
+.panel-resize-handle {
+  width: 100%;
+  height: 8px;
+  margin: -10px 0 4px 0;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.panel-resize-handle::after {
+  content: '';
+  width: 48px;
+  height: 3px;
+  background-color: var(--bg-dark-5);
+  border-radius: 2px;
+  transition: background-color var(--transition-fast), width var(--transition-fast);
+}
+
+.panel-resize-handle:hover::after {
+  background-color: var(--accent-cyan);
+  width: 64px;
+}
+
+/* 高密度インライン設定行 (競合を排除し、左詰めでキュッと整列) */
+.setting-group-box .setting-row,
+.setting-row {
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-size: 12px;
+  width: 100%;
+  padding: 2px 0;
+}
+
+.setting-row .row-label {
+  width: 84px !important;
+  flex-shrink: 0 !important;
+  color: var(--text-main);
+  font-weight: 700;
+  text-align: left;
+}
+
+.setting-row input[type="range"] {
+  width: 180px !important;
+  max-width: 180px !important;
+  flex: none !important;
+  accent-color: var(--accent-cyan);
+}
+
+.setting-row input[type="color"] {
+  width: 32px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.setting-row .val-badge {
+  width: 38px !important;
+  text-align: left !important;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--accent-cyan);
+  flex-shrink: 0 !important;
+}
+
+/* パネルヘッダー（右上の✕ボタンとの重なりを物理的に防ぐ強制右余白） */
+.sub-panel-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding-right: 48px !important; /* ★ ✕ボタンの場所を強力に確保 */
+  margin-bottom: 8px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 独立した円形閉じる「✕」ボタン (押しやすく干渉しないデザイン) */
+.btn-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-dark-3);
+  border: 1px solid var(--bg-dark-4);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-close:hover {
+  background-color: var(--accent-red);
+  color: #ffffff;
+  border-color: var(--accent-red);
+}
+
+/* フォーム要素 */
+.sub-panel input[type="number"],
+.sub-panel input[type="text"] {
+  background-color: var(--bg-dark-3);
+  color: #ffffff;
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.sub-panel input[type="number"]:focus,
+.sub-panel input[type="text"]:focus {
+  border-color: var(--accent-cyan);
+}
+
+.sub-panel input[type="range"] {
+  width: 55%;
+  accent-color: var(--accent-cyan);
+}
+
+.sub-panel input[type="color"] {
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 4px;
+  background: none;
+  width: 32px;
+  height: 24px;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   10. Quill.js Rich Text Editor 連携 & フォントクラス定義
+   -------------------------------------------------------------------------- */
+#panel-caption-editor .ql-toolbar.ql-snow {
+  background: var(--bg-dark-3);
+  border-color: var(--bg-dark-4);
+  border-radius: 6px 6px 0 0;
+}
+
+/* ★ 入力欄をダーク背景に変更（白文字や明るい色がくっきり見えるように） */
+#panel-caption-editor .ql-container.ql-snow {
+  background: #111113;
+  border-color: var(--bg-dark-4);
+  border-radius: 0 0 6px 6px;
+}
+
+/* Quillエディタ内入力テキストのスリム化 */
+#panel-caption-editor .ql-editor {
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.3;
+  min-height: 42px;
+  max-height: 70px;
+  padding: 6px 10px;
+  caret-color: var(--accent-cyan);
+}
+
+#panel-caption-editor .ql-editor.ql-blank::before {
+  color: #66666e !important;
+  font-style: normal;
+}
+
+/* Quillツールバーのアイコンや文字色をダークテーマに適合 */
+#panel-caption-editor .ql-snow .ql-stroke {
+  stroke: #d4d4d8 !important;
+}
+#panel-caption-editor .ql-snow .ql-fill {
+  fill: #d4d4d8 !important;
+}
+#panel-caption-editor .ql-snow .ql-picker {
+  color: #d4d4d8 !important;
+}
+
+/* Quill適用フォントクラス（JavaScript連携） */
+.ql-font-m-plus-rounded { font-family: var(--font-rounded) !important; }
+.ql-font-dot-gothic     { font-family: var(--font-dot) !important; }
+.ql-font-klee-one        { font-family: var(--font-klee) !important; }
+.ql-font-shippori-mincho { font-family: var(--font-mincho) !important; }
+.ql-font-sans-serif      { font-family: sans-serif !important; }
+
+/* 汎用フォントクラス */
+.font-rounded { font-family: var(--font-rounded); }
+.font-dot     { font-family: var(--font-dot); }
+.font-klee    { font-family: var(--font-klee); }
+.font-mincho  { font-family: var(--font-mincho); }
+
+/* Quillドロップダウン内の各フォントラベル日本語表示 */
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="m-plus-rounded"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="m-plus-rounded"]::before {
+  content: "丸ゴシック";
+  font-family: var(--font-rounded);
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="dot-gothic"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="dot-gothic"]::before {
+  content: "レトロドット";
+  font-family: var(--font-dot);
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="klee-one"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="klee-one"]::before {
+  content: "手書き風";
+  font-family: var(--font-klee);
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="shippori-mincho"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="shippori-mincho"]::before {
+  content: "高級明朝";
+  font-family: var(--font-mincho);
+}
+
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value="sans-serif"]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value="sans-serif"]::before {
+  content: "標準ゴシック";
+}
+
+/* --------------------------------------------------------------------------
+   11. 字幕台本一括編集リスト（Cue List）
+   -------------------------------------------------------------------------- */
+.cue-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-dark-3);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--bg-dark-4);
+  transition: border-color var(--transition-fast);
+}
+
+.cue-row:hover {
+  border-color: var(--bg-dark-5);
+}
+
+.cue-time-input {
+  width: 52px;
+  font-size: 11px;
+  text-align: center;
+  padding: 3px;
+}
+
+.cue-text-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* --------------------------------------------------------------------------
+   12. Mobile Responsive & Safe Area Adjustments
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* 1. タップ領域最適化 */
+  .btn, .tool-btn, .btn-icon, .btn-play {
+    min-height: 32px;
+    touch-action: manipulation;
+  }
+
+  /* 2. ヘッダーレスポンシブ (左右配置の維持) */
+  .header {
+    padding: 0 6px;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .header-left {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0;
+    -webkit-overflow-scrolling: touch;
+    max-width: 48vw;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .header-left::-webkit-scrollbar {
+    display: none;
+  }
+
+  .header-left .btn {
+    flex-shrink: 0;
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .header-center {
+    flex-shrink: 0;
+  }
+
+  .dropdown {
+    font-size: 10px;
+    padding: 3px 5px;
+    max-width: 90px;
+  }
+
+  #export-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  /* 3. コントロールバー (要素同士の潰れ防止) */
+  .controls {
+    padding: 0 6px;
+    gap: 6px;
+  }
+
+  .time-code {
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  #time-input {
+    width: 52px;
+    font-size: 10px;
+  }
+
+  .clip-time-editor {
+    padding: 2px 4px;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .clip-time-editor input[type="number"] {
+    width: 38px;
+    font-size: 10px;
+  }
+
+  .clip-time-editor input[type="text"] {
+    width: 80px;
+    font-size: 10px;
+  }
+
+  .zoom-controls {
+    gap: 2px !important;
+    flex-shrink: 0;
+  }
+
+  .zoom-controls #zoom-slider {
+    width: 45px !important;
+  }
+
+  .controls-right-group {
+    flex-shrink: 0;
+  }
+
+  .btn-icon {
+    padding: 3px 4px;
+    font-size: 10px;
+    width: 72px;
+    flex-shrink: 0;
+  }
+
+  /* 4. 最下部ツールバー */
+  .toolbar {
+    justify-content: flex-start;
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 6px;
+    padding: 0 6px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    height: calc(var(--toolbar-height) + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tool-btn {
+    flex-shrink: 0;
+    min-width: 44px;
+    padding: 2px 3px;
+    font-size: 9px;
+  }
+
+  /* 5. サブパネル (モバイルでも共通高さ連動) */
+  .sub-panel {
+    border-radius: 14px 14px 0 0;
+    overflow-y: auto;
+    padding: 12px 10px;
+    padding-bottom: calc(var(--toolbar-height) + env(safe-area-inset-bottom, 0px) + 16px);
+    bottom: calc(var(--toolbar-height) + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.85);
+  }
+
+  /* 6. iOSでのフォーム入力時自動ズーム防止 */
+  input[type="text"]:not(.cue-time-input):not(#clip-quick-text),
+  input[type="number"]:not(.cue-time-input):not(#clip-in-time):not(#clip-out-time):not(#clip-dur-time),
+  select {
+    font-size: 16px !important;
+  }
+
+  .cue-time-input {
+    font-size: 11px;
+    transform: scale(1);
+  }
+}
+/* 選択中素材の時間・テキスト編集バー (中央に整然と配置) */
+.clip-time-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #141417;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.clip-info-label {
+  font-size: 9px;
+  font-weight: 800;
+  background: var(--accent-cyan);
+  color: #000000;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.clip-name-text {
+  font-size: 11px;
+  font-weight: bold;
+  color: #ffffff;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clip-time-editor label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-sub);
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.clip-time-editor input[type="number"] {
+  width: 46px;
+  background: var(--bg-dark-1);
+  border: 1px solid var(--bg-dark-4);
+  color: var(--accent-cyan);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 11px;
+  text-align: center;
+  outline: none;
+}
+
+.clip-time-editor input[type="number"]:focus {
+  border-color: var(--accent-cyan);
+}
+
+.clip-time-editor input[type="text"] {
+  width: 100px;
+  background: var(--bg-dark-1);
+  border: 1px solid var(--bg-dark-4);
+  color: #ffffff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  outline: none;
+}
+
+.clip-time-editor input[type="text"]:focus {
+  border-color: var(--accent-cyan);
+}
+
+.btn-clip-action {
+  background: var(--bg-dark-3);
+  border: 1px solid var(--bg-dark-4);
+  color: var(--text-main);
+  font-size: 9px;
+  font-weight: bold;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-clip-action:hover {
+  background: var(--bg-dark-4);
+  border-color: var(--bg-dark-5);
+}
+
+.btn-clip-action.active {
+  background: rgba(255, 45, 85, 0.25);
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+/* --------------------------------------------------------------------------
+   13. 台本・スクリプト編集パネル (DSL Script Editor)
+   -------------------------------------------------------------------------- */
+#panel-script-editor code {
+  background: var(--bg-dark-3);
+  color: var(--accent-cyan);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+}
+
+#timeline-script-textarea {
+  tab-size: 2;
+  caret-color: var(--accent-cyan);
+  white-space: pre;
+  word-wrap: normal;
+  overflow-x: auto;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+  transition: border-color var(--transition-fast);
+}
+
+#timeline-script-textarea:focus {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2), inset 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 768px) {
+  #timeline-script-textarea {
+    height: 140px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   14. リファクタリング用 委託コンポーネントクラス群
+   -------------------------------------------------------------------------- */
+
+/* スライダー横の数値インジケーター共通クラス */
+.val-badge {
+  width: 44px;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  color: var(--accent-cyan);
+  flex-shrink: 0;
+}
+
+/* カスタム解像度入力 */
+.custom-res-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.custom-res-input {
+  width: 52px;
+  font-size: 11px;
+  padding: 3px 4px;
+  background: var(--bg-dark-3);
+  color: #ffffff;
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.custom-res-sep {
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+/* ズームコントロール */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ★ ズーム専用のコンパクトな正方形ボタン */
+.zoom-controls .btn-icon {
+  min-width: 26px !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  font-size: 14px !important;
+  font-weight: bold;
+  border-radius: 4px;
+}
+
+.zoom-slider {
+  width: 110px;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+/* エクスポート設定モーダル */
+.modal-export {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  bottom: auto !important;
+  width: 92% !important;
+  max-width: 420px !important;
+  max-height: 88vh !important;
+  overflow-y: auto !important;
+  background: rgba(24, 24, 27, 0.98) !important;
+  border-radius: 12px !important;
+  border: 2px solid var(--accent-cyan) !important;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.9) !important;
+  padding: 16px !important;
+  z-index: 999999 !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-export h3 {
+  margin-bottom: 12px;
+  color: var(--accent-cyan);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-export .setting-group-box > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.export-estimate-box {
+  background: var(--bg-dark-3);
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.estimate-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.estimate-row .label {
+  color: var(--text-sub);
+}
+
+.estimate-row .val {
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.estimate-row .val.accent {
+  color: var(--accent-cyan);
+}
+
+.btn-export-start {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  margin-top: 6px;
+}
+
+/* アニメーションリスト（JS動的生成行） */
+.anim-group-box {
+  background: var(--bg-dark-3);
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.anim-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-dark-2);
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid var(--bg-dark-3);
+}
+
+.btn-del-mini {
+  font-size: 9px !important;
+  padding: 2px 5px !important;
+  min-height: auto !important;
+}
+
+/* 台本エディタ（DSL）コンポーネント */
+.script-tutorial-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--bg-dark-3);
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.script-tutorial-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--accent-cyan);
+  white-space: nowrap;
+}
+
+.script-textarea {
+  width: 100%;
+  height: 200px;
+  background: #111113;
+  color: var(--accent-cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px;
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
+}
+
+.script-btn-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.checkbox-large {
+  transform: scale(1.25);
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   15. Song Maker グリッドシーケンサー スタイル (共通高さ連動)
+   ========================================================================== */
+.song-maker-panel {
+  background: rgba(18, 18, 22, 0.98) !important;
+}
+
+/* ★ 追加: Song Maker 内のセクション区切り枠 */
+.sm-section-box {
+  background: var(--bg-dark-2);
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.song-maker-scroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: #0d0d10;
+  border-radius: 8px;
+  border: 1px solid var(--bg-dark-4);
+  padding: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.song-maker-grid {
+  display: grid;
+  gap: 3px;
+  position: relative;
+  user-select: none;
+  min-width: max-content;
+}
+
+/* 1マスの基本構造 */
+.sm-cell {
+  width: 28px;
+  height: 24px;
+  border-radius: 4px;
+  background: #1e1e24;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: transform 0.08s ease, filter 0.08s ease;
+}
+
+.sm-cell:hover {
+  filter: brightness(1.25);
+}
+
+.sm-cell:active {
+  transform: scale(0.92);
+}
+
+/* 4拍ごとの小節区切り境界線 */
+.sm-cell.bar-boundary {
+  margin-right: 4px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* 再生走査線（現在演奏中のステップハイライト） */
+.sm-cell.active-step {
+  box-shadow: inset 0 0 0 2px #ffffff;
+  filter: brightness(1.4);
+}
+
+/* メロディ音階（ドレミファソラシド...）カラフルカラー */
+.sm-cell.active.note-0  { background-color: #ff3b30 !important; } /* ド (赤) */
+.sm-cell.active.note-1  { background-color: #ff9500 !important; } /* レ (橙) */
+.sm-cell.active.note-2  { background-color: #ffcc00 !important; } /* ミ (黄) */
+.sm-cell.active.note-3  { background-color: #34c759 !important; } /* ファ (緑) */
+.sm-cell.active.note-4  { background-color: #00c7be !important; } /* ソ (青緑) */
+.sm-cell.active.note-5  { background-color: #007aff !important; } /* ラ (青) */
+.sm-cell.active.note-6  { background-color: #af52de !important; } /* シ (紫) */
+.sm-cell.active.note-7  { background-color: #ff2d55 !important; } /* 高いド (ピンク) */
+.sm-cell.active.note-8  { background-color: #ff9500 !important; } /* 高いレ */
+.sm-cell.active.note-9  { background-color: #ffcc00 !important; } /* 高いミ */
+.sm-cell.active.note-10 { background-color: #34c759 !important; } /* 高いファ */
+
+/* リズム（ドラム）グリッド用カラー＆アイコン */
+.sm-cell.drum-row {
+  height: 22px;
+  background: #18181f;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.sm-cell.active.drum-snare {
+  background-color: #00f0ff !important; /* スネア: ネオンシアン */
+  border-radius: 50%;
+}
+
+.sm-cell.active.drum-kick {
+  background-color: #ff9500 !important; /* キック: ネオンオレンジ */
+}
+
+/* コントロール群のレイアウト */
+.song-maker-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  font-size: 11px;
+}
+/* タイムラインクリップ内のキーフレームマーカー（◆印） */
+.timeline-clip .clip-keyframe-marker {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  background-color: var(--accent-cyan);
+  border: 1px solid #000000;
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+  z-index: 4;
+  box-shadow: 0 0 4px rgba(0, 240, 255, 0.8);
+}
+
+/* テキスト編集パネル内の Cue リストコンテナ */
+.caption-cue-section {
+  background: var(--bg-dark-3);
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--bg-dark-4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.caption-cue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.caption-cue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-dark-2);
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--bg-dark-4);
+  font-size: 11px;
+}
+
+.caption-cue-item.active {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.caption-cue-time {
+  font-family: ui-monospace, monospace;
+  color: var(--accent-cyan);
+  width: 48px;
+  text-align: center;
+  background: var(--bg-dark-1);
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 3px;
+  padding: 2px 0;
+}
+
+.caption-cue-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #ffffff;
+}
+/* ==========================================================================
+   16. HTML インラインスタイル統合・共通コンポーネント
+   ========================================================================== */
+
+/* ショートカット一覧テーブル */
+.shortcuts-list {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcuts-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kbd-badge {
+  background: var(--bg-dark-4);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* サブパネル共通見出し・ボタングループ */
+.sub-panel h3 {
+  margin: 0;
+}
+
+.panel-header-btn {
+  font-size: 10px !important;
+  padding: 3px 6px !important;
+  min-height: auto !important;
+}
+
+.setting-group-box {
+  background: var(--bg-dark-3);
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--bg-dark-4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 設定ボックス内の行レイアウト（左右配置・均等配置の保証） */
+.setting-group-box > span,
+.setting-group-box > div:not(.align-key-badge) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  gap: 8px;
+}
+
+/* サブパネル内のセクション区切り見出し */
+.sub-panel-section-title {
+  margin-top: 6px;
+  font-weight: bold;
+  color: var(--accent-cyan);
+  border-top: 1px dashed var(--bg-dark-4);
+  padding-top: 6px;
+  display: block;
+}
+
+/* パネル最下部のアクションボタン */
+.btn-panel-action {
+  margin-top: 6px;
+  width: 100%;
+}
+
+/* 幅広ドロップダウン用 */
+.dropdown-wide {
+  max-width: 200px !important;
+  width: 100%;
+}
+
+.flex-btn-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* コントロールバー右側ボタングループ */
+.controls-right-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ファイル入力用コンパクト幅 */
+.file-input-compact {
+  width: 160px;
+}
+
+/* 強調サブ枠（Song Maker などのカラー背景枠） */
+.accent-box {
+  background: rgba(0, 240, 255, 0.05);
+  border-color: rgba(0, 240, 255, 0.3) !important;
+}
+
+/* 基準主軸インフォバッジ */
+.align-key-badge {
+  font-size: 10px;
+  color: #ffcc00;
+  background: rgba(255, 204, 0, 0.1);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px dashed rgba(255, 204, 0, 0.4);
+}
+/* プレビュー全画面切り替えボタン */
+.btn-preview-fullscreen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(24, 24, 27, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-main);
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  z-index: 60;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-preview-fullscreen:hover {
+  background: var(--bg-dark-3);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* 全画面シアターモード時のプレビュースタイル */
+.preview-container.fullscreen-mode {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 5000 !important;
+  background: #000000 !important;
+  padding: 0 !important;
+}
+
+.preview-container.fullscreen-mode #preview-canvas {
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: contain !important;
+}
+
+/* ==========================================================================
+   17. ポインター（マーカー）＆ 画面録画用スタイル
+   ========================================================================== */
+
+/* マーカーピン（ルーラー上の表示） */
+.timeline-marker-pin {
+  position: absolute;
+  top: 1px;
+  width: 10px;
+  height: 14px;
+  background-color: var(--accent-yellow);
+  clip-path: polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%);
+  cursor: pointer;
+  z-index: 95;
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(255, 204, 0, 0.8);
+  transition: transform 0.1s ease;
+}
+
+.timeline-marker-pin:hover {
+  transform: translateX(-50%) scale(1.25);
+}
+
+.timeline-marker-pin.clip-marker {
+  background-color: var(--accent-cyan);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.8);
+}
+
+/* マーカー一覧アイテム */
+.marker-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-dark-3);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bg-dark-4);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.marker-item-row:hover {
+  border-color: var(--accent-cyan);
+}
+
+.marker-time-badge {
+  font-family: ui-monospace, monospace;
+  color: var(--accent-cyan);
+  background: var(--bg-dark-1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+/* 画面録画パネル */
+.record-preview-box {
+  width: 100%;
+  height: 140px;
+  background: #000000;
+  border-radius: 8px;
+  border: 1px solid var(--bg-dark-4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.record-preview-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.record-indicator {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--accent-red);
+}
+
+.record-indicator::before {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 8px;
+  background-color: var(--accent-red);
+  border-radius: 50%;
+  animation: pulse-record 1s infinite;
+}
+
+@keyframes pulse-record {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ==========================================================================
+   18. HTMLインラインスタイルから抽出された追加コンポーネント
+   ========================================================================== */
+
+/* ヘッダー画面録画トリガーボタン */
+.btn-rec-trigger {
+  color: var(--accent-red) !important;
+  border-color: rgba(255, 45, 85, 0.4) !important;
+}
+
+/* 画面録画モーダル固有スタイル */
+.modal-record {
+  max-width: 440px !important;
+}
+
+.record-modal-title {
+  color: var(--accent-red) !important;
+}
+
+.btn-record-start {
+  background: var(--accent-red) !important;
+  color: #ffffff !important;
+}
+
+.btn-record-stop {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* ポインター一覧コンテナ */
+.markers-list-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+/* ==========================================================================
+   19. Song Maker & 台本エディタ 統合コンポーネントクラス
+   ========================================================================== */
+
+/* 汎用フレックス伸縮 */
+.flex-1 {
+  flex: 1 !important;
+}
+
+/* Song Maker 自動作曲レイアウト */
+.sm-auto-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sm-section-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--accent-cyan);
+}
+
+.dropdown-sm-genre {
+  width: 115px !important;
+}
+
+.btn-sm-auto-gen {
+  font-size: 11px !important;
+  padding: 4px 10px !important;
+}
+
+.sm-manual-title {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--text-main);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.btn-sm-preview-play {
+  font-size: 11px !important;
+  padding: 5px 12px !important;
+}
+
+.dropdown-sm-short {
+  width: 80px !important;
+}
+
+.dropdown-sm-mid {
+  width: 95px !important;
+}
+
+.input-sm-bpm {
+  width: 70px !important;
+}
+
+.val-badge-narrow {
+  width: 26px !important;
+}
+
+.input-sm-bars {
+  width: 42px !important;
+  text-align: center !important;
+  background-color: var(--bg-dark-3);
+  color: #ffffff;
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 4px;
+}
+
+/* SE ツールバー */
+.sm-se-toolbar {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--bg-dark-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dropdown-sm-se {
+  width: 110px !important;
+}
+
+.btn-se-add {
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  color: var(--accent-cyan) !important;
+  border-color: var(--accent-cyan) !important;
+}
+
+/* 台本適用ボタン */
+.btn-script-apply {
+  flex: 1;
+  font-size: 13px !important;
+  font-weight: bold !important;
+}
+/* ==========================================================================
+   20. フィルターパネル・ヘッダー用クラス
+   ========================================================================== */
+
+.filter-header-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-bypass-label {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  color: var(--text-main);
+}
+
+.filter-bypass-check {
+  transform: scale(1.1);
+  cursor: pointer;
+}
+
+.filter-section-top {
+  margin-top: 0 !important;
+  border-top: none !important;
+  padding-top: 0 !important;
+}
+/* ==========================================================================
+   21. 自由キーフレーム・マスク・ストック素材用スタイル
+   ========================================================================== */
+
+/* タイムライン上の自由キーフレームマーカー（ひし形） */
+.timeline-clip .clip-free-keyframe-marker {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  background-color: #ffcc00;
+  border: 1px solid #000000;
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 0 5px rgba(255, 204, 0, 0.9);
+}
+
+/* キーフレーム一覧のアイテム行 */
+.keyframe-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-dark-2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--bg-dark-4);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.dropdown-kf-ease {
+  max-width: 140px;
+  height: 22px;
+  background: var(--bg-dark-3);
+  color: var(--accent-cyan);
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 4px;
+  outline: none;
+}
+
+.keyframe-item-row.active {
+  border-color: #ffcc00;
+  background: rgba(255, 204, 0, 0.1);
+}
+
+.keyframe-time-badge {
+  font-family: ui-monospace, monospace;
+  color: #ffcc00;
+  font-weight: bold;
+}
