@@ -164,8 +164,16 @@ class ProjectManager {
 
       if (settings.filters) {
         editor.state.filters = { ...settings.filters };
+        const bypassToggle = document.getElementById('filter-bypass-toggle');
+        if (bypassToggle) bypassToggle.checked = editor.state.filters.enabled !== false;
+        
+        VideoEditorEngine.FILTER_SCHEMA.forEach(({ key }) => {
+          const el = document.getElementById(`filter-${key}`);
+          if (el && editor.state.filters[key] !== undefined) el.value = editor.state.filters[key];
+        });
+
         const lutSelect = document.getElementById('filter-lut-preset');
-        if (lutSelect) lutSelect.value = settings.filters.lutPreset || 'none';
+        if (lutSelect) lutSelect.value = editor.state.filters.lutPreset || 'none';
       }
 
       if (settings.chromaKey) {
@@ -266,9 +274,22 @@ class ProjectManager {
           ...t,
           id: t.id || `clip-${Date.now()}-${i}`,
           startTime: typeof t.startTime === 'number' ? Math.max(0, t.startTime) : 0,
-          duration: typeof t.duration === 'number' ? Math.max(0.1, t.duration) : 3,
+          duration: typeof t.duration === 'number' ? Math.max(0, t.duration) : 3,
           trackIndex: typeof t.trackIndex === 'number' ? Math.max(0, t.trackIndex) : 0,
-          transform: t.transform || { scale: 1.0, rotation: 0, rotateX: 0, rotateY: 0, x: 0, y: 0 },
+          transform: {
+            scale: 1.0,
+            rotation: 0,
+            rotateX: 0,
+            rotateY: 0,
+            x: 0,
+            y: 0,
+            opacity: 1.0,
+            flipX: false,
+            flipY: false,
+            ...(t.transform || {})
+          },
+          crop: t.crop || { top: 0, bottom: 0, left: 0, right: 0 },
+          filters: t.filters ? { ...t.filters } : undefined,
           element: restoredElement,
           model: restoredModel,
           waveform: restoredWaveform

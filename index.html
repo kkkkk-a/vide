@@ -347,7 +347,7 @@
       <div class="panel-resize-handle" title="ドラッグして高さを変更"></div>
       <div class="sub-panel-header">
         <div class="filter-header-group">
-          <h3>フィルター & シネマカラー</h3>
+          <h3 id="label-filter-target-title">フィルター (全体)</h3>
           <label class="filter-bypass-label">
             <input type="checkbox" id="filter-bypass-toggle" checked class="filter-bypass-check"> 有効
           </label>
@@ -404,12 +404,33 @@
         <button id="reset-trans-btn" class="btn btn-secondary panel-header-btn">リセット</button>
       </div>
 
+      <span>不透明度: <input type="range" id="trans-opacity" min="0" max="100" value="100"><span id="val-trans-opacity" class="val-badge">100%</span></span>
       <span>拡大率: <input type="range" id="trans-scale" min="10" max="300" value="100"><span id="val-trans-scale" class="val-badge">100%</span></span>
+      <span>反転:
+        <div class="flex-btn-group">
+          <button id="btn-flip-h" class="btn btn-secondary panel-header-btn">左右反転</button>
+          <button id="btn-flip-v" class="btn btn-secondary panel-header-btn">上下反転</button>
+        </div>
+      </span>
       <span>2D回転: <input type="range" id="trans-rotate" min="-180" max="180" value="0"><span id="val-trans-rotate" class="val-badge">0度</span></span>
       <span>3D回転 X(縦傾き): <input type="range" id="trans-rotate-x" min="-180" max="180" value="0"><span id="val-trans-rotate-x" class="val-badge">0度</span></span>
       <span>3D回転 Y(横傾き): <input type="range" id="trans-rotate-y" min="-180" max="180" value="0"><span id="val-trans-rotate-y" class="val-badge">0度</span></span>
       <span>位置 (横 X): <input type="range" id="trans-x" min="-500" max="500" value="0"><span id="val-trans-x" class="val-badge">0px</span></span>
       <span>位置 (縦 Y): <input type="range" id="trans-y" min="-500" max="500" value="0"><span id="val-trans-y" class="val-badge">0px</span></span>
+
+      <span class="sub-panel-section-title">クロップ (上下左右の切り取り %)</span>
+      <div class="setting-group-box">
+        <div class="setting-row">
+          <span class="row-label">上/下</span>
+          <span>上:</span><input type="number" id="crop-top" min="0" max="49" value="0" class="custom-res-input">%
+          <span>下:</span><input type="number" id="crop-bottom" min="0" max="49" value="0" class="custom-res-input">%
+        </div>
+        <div class="setting-row">
+          <span class="row-label">左/右</span>
+          <span>左:</span><input type="number" id="crop-left" min="0" max="49" value="0" class="custom-res-input">%
+          <span>右:</span><input type="number" id="crop-right" min="0" max="49" value="0" class="custom-res-input">%
+        </div>
+      </div>
 
       <!-- ★ 物理判定セクション（アニメーション連動モードを追加） -->
       <span class="sub-panel-section-title">他素材との重なり・当たり判定</span>
@@ -949,8 +970,7 @@
               <option value="svg-question">はてな (疑問/？)</option>
             </optgroup>
             <optgroup label="5. バッジ & 装飾・トロフィー">
-              <option value="svg-crown">王冠 (1位/TOP)</option>
-              <option value="svg-trophy">トロフィー (優勝/王者)</option>
+              <option value="svg-trophy" selected>トロフィー (優勝/王者)</option>
               <option value="svg-badge-star">ゴールドスターバッジ</option>
               <option value="svg-leaf">初心者マーク (若葉)</option>
             </optgroup>

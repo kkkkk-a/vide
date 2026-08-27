@@ -36,6 +36,9 @@ class ScriptDSL {
     { key: 'x', getter: c => c.transform?.x, setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.x = parseFloat(v); } },
     { key: 'y', getter: c => c.transform?.y, setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.y = parseFloat(v); } },
     { key: 'scale', getter: c => (c.transform?.scale !== 1 ? c.transform?.scale : undefined), setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.scale = parseFloat(v); } },
+    { key: 'opacity', getter: c => (c.transform?.opacity !== undefined && c.transform.opacity !== 1 ? c.transform.opacity : undefined), setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.opacity = parseFloat(v); } },
+    { key: 'flipX', getter: c => (c.transform?.flipX ? 'true' : undefined), setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.flipX = (v === 'true' || v === true); } },
+    { key: 'flipY', getter: c => (c.transform?.flipY ? 'true' : undefined), setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.flipY = (v === 'true' || v === true); } },
     { key: 'rot', getter: c => c.transform?.rotation, setter: (c, v) => { if (!c.transform) c.transform = {}; c.transform.rotation = parseFloat(v); } },
     { key: 'color', getter: c => c.color, setter: (c, v) => { c.color = v; } },
     { key: 'size', getter: c => c.fontSize || c.size, setter: (c, v) => { c.fontSize = parseInt(v); c.size = parseInt(v); } },
@@ -53,8 +56,10 @@ class ScriptDSL {
     { key: 'speed', getter: c => (c.playbackSpeed !== 1.0 ? c.playbackSpeed : undefined), setter: (c, v) => { c.playbackSpeed = parseFloat(v); } },
     { key: 'offset', getter: c => (c.mediaOffset > 0 ? c.mediaOffset.toFixed(2) : undefined), setter: (c, v) => { c.mediaOffset = parseFloat(v); } },
     { key: 'in', getter: c => (c.animProps?.inAnim !== 'none' ? c.animProps?.inAnim : undefined), setter: (c, v) => { if (!c.animProps) c.animProps = {}; c.animProps.inAnim = v; } },
+    { key: 'inDur', getter: c => (c.animProps?.inDuration !== 0.8 ? c.animProps?.inDuration : undefined), setter: (c, v) => { if (!c.animProps) c.animProps = {}; c.animProps.inDuration = parseFloat(v); } },
     { key: 'main', getter: c => (c.animProps?.mainAnim !== 'none' ? c.animProps?.mainAnim : undefined), setter: (c, v) => { if (!c.animProps) c.animProps = {}; c.animProps.mainAnim = v; } },
-    { key: 'out', getter: c => (c.animProps?.outAnim !== 'none' ? c.animProps?.outAnim : undefined), setter: (c, v) => { if (!c.animProps) c.animProps = {}; c.animProps.outAnim = v; } }
+    { key: 'out', getter: c => (c.animProps?.outAnim !== 'none' ? c.animProps?.outAnim : undefined), setter: (c, v) => { if (!c.animProps) c.animProps = {}; c.animProps.outAnim = v; } },
+    { key: 'outDur', getter: c => (c.animProps?.outDuration !== 0.8 ? c.animProps?.outDuration : undefined), setter: (c, v) => { if (!c.animProps) c.animProps = {}; c.animProps.outDuration = parseFloat(v); } }
   ];
 
   // タイムラインデータを台本DSL文字列に変換（スキーマ駆動自動出力）

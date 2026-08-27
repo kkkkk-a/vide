@@ -169,7 +169,6 @@ class VideoEditorEngine {
     // 1. 動画 / 画像
     const drawMedia = (ctx, clip, animT) => {
       const el = clip.element;
-      // readyState < 1 の完全未ロード時のみスキップし、シーク中(readyState >= 1)はフレームを描画
       if (!el || (clip.type === 'video' && el.readyState < 1) || (clip.type === 'image' && (!el.complete || el.naturalWidth === 0))) return;
 
       const imgW = clip.type === 'video' ? el.videoWidth : el.naturalWidth;
@@ -182,27 +181,45 @@ class VideoEditorEngine {
 
       const radX = ((animT.rotateX || 0) * Math.PI) / 180;
       const radY = ((animT.rotateY || 0) * Math.PI) / 180;
-      const scaleX = (animT.scale || 1.0) * Math.cos(radY);
-      const scaleY = (animT.scale || 1.0) * Math.cos(radX);
+      const flipX = clip.transform?.flipX ? -1 : 1;
+      const flipY = clip.transform?.flipY ? -1 : 1;
+      const scaleX = (animT.scale || 1.0) * Math.cos(radY) * flipX;
+      const scaleY = (animT.scale || 1.0) * Math.cos(radX) * flipY;
 
       ctx.save();
+      ctx.globalAlpha = (animT.opacity !== undefined ? animT.opacity : 1.0) * (clip.transform?.opacity !== undefined ? clip.transform.opacity : 1.0);
       ctx.globalCompositeOperation = clip.blendMode || 'source-over';
       ctx.translate((this.canvas.width / 2) + (animT.x || 0), (this.canvas.height / 2) - (animT.y || 0));
       if (animT.rotation) ctx.rotate((animT.rotation * Math.PI) / 180);
       ctx.scale(scaleX, scaleY);
 
-      // マスク処理（円形または四角形）
+      // クリップ個別フィルターの適用
+      if (clip.filters && clip.filters.enabled !== false) {
+        ctx.filter = VideoEditorEngine.buildFilterCSS(clip.filters);
+      }
+
+      // クロップ（上下左右のパーセント切り抜き）
+      const crop = clip.crop || { top: 0, bottom: 0, left: 0, right: 0 };
+      const srcX = (crop.left / 100) * imgW;
+      const srcY = (crop.top / 100) * imgH;
+      const srcW = Math.max(1, imgW * (1 - (crop.left + crop.right) / 100));
+      const srcH = Math.max(1, imgH * (1 - (crop.top + crop.bottom) / 100));
+
+      const dstW = drawW * (srcW / imgW);
+      const dstH = drawH * (srcH / imgH);
+
+      // マスク処理
       if (clip.maskType === 'circle') {
         ctx.beginPath();
-        ctx.arc(0, 0, Math.min(drawW, drawH) / 2, 0, Math.PI * 2);
+        ctx.arc(0, 0, Math.min(dstW, dstH) / 2, 0, Math.PI * 2);
         ctx.clip();
       } else if (clip.maskType === 'rect') {
         ctx.beginPath();
-        ctx.rect(-drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.rect(-dstW / 2, -dstH / 2, dstW, dstH);
         ctx.clip();
       }
 
-      // クロマキー有効時はオフスクリーンバッファで透過計算
+      // クロマキー処理
       if (this.state.chromaKey.enabled && this._offscreenCanvas && this._offscreenCtx) {
         if (this._offscreenCanvas.width !== imgW || this._offscreenCanvas.height !== imgH) {
           this._offscreenCanvas.width = imgW;
@@ -211,12 +228,13 @@ class VideoEditorEngine {
         this._offscreenCtx.clearRect(0, 0, imgW, imgH);
         this._offscreenCtx.drawImage(el, 0, 0, imgW, imgH);
         this.applyChromaKey(this._offscreenCtx, imgW, imgH);
-        ctx.drawImage(this._offscreenCanvas, 0, 0, imgW, imgH, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.drawImage(this._offscreenCanvas, srcX, srcY, srcW, srcH, -dstW / 2, -dstH / 2, dstW, dstH);
       } else {
-        ctx.drawImage(el, 0, 0, imgW, imgH, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.drawImage(el, srcX, srcY, srcW, srcH, -dstW / 2, -dstH / 2, dstW, dstH);
       }
 
-      this.drawSelectionOutline(ctx, clip, drawW, drawH);
+      ctx.filter = 'none';
+      this.drawSelectionOutline(ctx, clip, dstW, dstH);
       ctx.restore();
     };
 
@@ -1054,7 +1072,7 @@ class VideoEditorEngine {
         { id: 'tool-audio-mix', label: '全体音量', action: () => this.toggleSubPanel('panel-audio') },
         { id: 'tool-paste', label: '貼り付け', action: () => this.pasteItem() },
         { id: 'tool-auto-sub', label: '自動字幕', action: () => this.generateAutoSubtitles(), condition: hasAudio },
-        { id: 'tool-filter', label: 'フィルター', action: () => this.toggleSubPanel('panel-filter') }
+        { id: 'tool-filter', label: 'フィルター', action: () => this.syncAndToggleFilterPanel() }
       ]);
     } else if (count === 1) {
       // 2. 単一素材メニュー
@@ -1088,8 +1106,8 @@ class VideoEditorEngine {
           transformBtn, alignBtn, animBtn, splitBtn, hideBtn, copyBtn, deleteBtn
         ],
         '3d': [{ id: 'tool-3d', label: '3D設定', action: () => this.syncAndToggle3DPanel() }, transformBtn, alignBtn, animBtn, splitBtn, hideBtn, copyBtn, deleteBtn],
-        image: [splitBtn, transformBtn, alignBtn, animBtn, { id: 'tool-filter', label: 'フィルター', action: () => this.toggleSubPanel('panel-filter') }, { id: 'tool-chroma', label: 'クロマキー', action: () => this.toggleSubPanel('panel-chroma') }, hideBtn, copyBtn, deleteBtn],
-        background: [{ id: 'tool-bgcolor', label: '背景設定', action: () => this.toggleSubPanel('panel-bgcolor') }, { id: 'tool-filter', label: 'フィルター', action: () => this.toggleSubPanel('panel-filter') }, hideBtn, deleteBtn],
+        image: [splitBtn, transformBtn, alignBtn, animBtn, { id: 'tool-filter', label: 'フィルター', action: () => this.syncAndToggleFilterPanel() }, { id: 'tool-chroma', label: 'クロマキー', action: () => this.toggleSubPanel('panel-chroma') }, hideBtn, copyBtn, deleteBtn],
+        background: [{ id: 'tool-bgcolor', label: '背景設定', action: () => this.toggleSubPanel('panel-bgcolor') }, { id: 'tool-filter', label: 'フィルター', action: () => this.syncAndToggleFilterPanel() }, hideBtn, deleteBtn],
         group: [transformBtn, alignBtn, animBtn, splitBtn, hideBtn, copyBtn, deleteBtn]
       };
 
@@ -1106,7 +1124,7 @@ class VideoEditorEngine {
         { id: 'tool-speed', label: '速度・カット', action: () => this.syncAndToggleSpeedPanel() },
         { id: 'tool-mask', label: 'マスク・合成', action: () => this.syncAndToggleMaskPanel() },
         transformBtn, alignBtn, animBtn,
-        { id: 'tool-filter', label: 'フィルター', action: () => this.toggleSubPanel('panel-filter') },
+        { id: 'tool-filter', label: 'フィルター', action: () => this.syncAndToggleFilterPanel() },
         { id: 'tool-chroma', label: 'クロマキー', action: () => this.toggleSubPanel('panel-chroma') },
         { id: 'tool-audio-mix', label: '音量', action: () => this.toggleSubPanel('panel-audio') },
         { id: 'tool-auto-sub', label: '自動字幕', action: () => this.generateAutoSubtitles() },
@@ -1263,6 +1281,7 @@ class VideoEditorEngine {
   }
   // 宣言的プロパティバインディング定義
   static TRANSFORM_SCHEMA = [
+    { id: 'trans-opacity', key: 'opacity', unit: '%', toUI: v => Math.round((v ?? 1) * 100) },
     { id: 'trans-scale', key: 'scale', unit: '%', toUI: v => Math.round((v ?? 1) * 100) },
     { id: 'trans-rotate', key: 'rotation', unit: '度', toUI: v => v || 0 },
     { id: 'trans-rotate-x', key: 'rotateX', unit: '度', toUI: v => v || 0 },
@@ -1283,6 +1302,15 @@ class VideoEditorEngine {
     { key: 'invert', default: 0, cssFn: 'invert', unit: '%' }
   ];
 
+  static buildFilterCSS(filters) {
+    if (!filters || filters.enabled === false) return 'none';
+    const active = VideoEditorEngine.FILTER_SCHEMA.some(s => (filters[s.key] ?? s.default) !== s.default);
+    if (!active) return 'none';
+    return VideoEditorEngine.FILTER_SCHEMA
+      .map(s => `${s.cssFn}(${filters[s.key] ?? s.default}${s.unit})`)
+      .join(' ');
+  }
+
   syncAndToggleTransformPanel() {
     if (!this.selectedItem?.transform) return;
     const t = this.selectedItem.transform;
@@ -1295,6 +1323,18 @@ class VideoEditorEngine {
       if (el) el.value = val;
       if (bEl) bEl.innerText = `${val}${unit}`;
     });
+
+    // 反転ボタン状態の同期
+    document.getElementById('btn-flip-h')?.classList.toggle('active', !!t.flipX);
+    document.getElementById('btn-flip-v')?.classList.toggle('active', !!t.flipY);
+
+    // クロップ値の同期
+    const c = this.selectedItem.crop || { top: 0, bottom: 0, left: 0, right: 0 };
+    const setCropInput = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || 0; };
+    setCropInput('crop-top', c.top);
+    setCropInput('crop-bottom', c.bottom);
+    setCropInput('crop-left', c.left);
+    setCropInput('crop-right', c.right);
 
     // 物理プロパティの同期（1つのセレクトボックスへ統合）
     const p = this.selectedItem.physics || { enabled: false, bounciness: 0.4, isStatic: false };
@@ -1427,6 +1467,34 @@ class VideoEditorEngine {
     this.renderMainAnimList();
     this.renderClipKeyframeList();
     this.toggleSubPanel('panel-anim');
+  }
+
+  // フィルターパネルの同期（選択クリップ個別 / 全体フィルターの自動判別）
+  syncAndToggleFilterPanel() {
+    const isClip = this.selectedItem && this.selectedItem.type !== 'background';
+    const targetObj = isClip ? (this.selectedItem.filters || (this.selectedItem.filters = { ...this.state.filters, enabled: true })) : this.state.filters;
+    const titleEl = document.getElementById('label-filter-target-title');
+
+    if (titleEl) {
+      titleEl.innerText = isClip ? `フィルター [${this.selectedItem.name || this.selectedItem.type}]` : 'フィルター (全体マスター)';
+    }
+
+    const bypassToggle = document.getElementById('filter-bypass-toggle');
+    if (bypassToggle) bypassToggle.checked = targetObj.enabled !== false;
+
+    VideoEditorEngine.FILTER_SCHEMA.forEach(({ key }) => {
+      const el = document.getElementById(`filter-${key}`);
+      if (el) el.value = targetObj[key] ?? 100;
+    });
+
+    const lutSelect = document.getElementById('filter-lut-preset');
+    const lutSlider = document.getElementById('filter-lut-intensity');
+    const valLut = document.getElementById('val-filter-lut');
+    if (lutSelect) lutSelect.value = targetObj.lutPreset || 'none';
+    if (lutSlider) lutSlider.value = Math.round((targetObj.lutIntensity ?? 0.8) * 100);
+    if (valLut) valLut.innerText = `${Math.round((targetObj.lutIntensity ?? 0.8) * 100)}%`;
+
+    this.toggleSubPanel('panel-filter');
   }
 
   // 速度・無音カットパネルの同期
@@ -2059,11 +2127,11 @@ calculateAnimTransform(clip) {
     if (relTime > 0.1 && relTime < clip.duration - 0.1) {
       this.pause();
       this.saveState();
-      const pitch = this.state.volume.pitch || 1.0;
+      const playbackSpeed = clip.playbackSpeed || 1.0;
       const originalDuration = clip.duration;
       const originalOffset = clip.mediaOffset || 0;
       clip.duration = relTime; // 前半部分の長さを確定
-      clip.originalDuration = relTime * pitch;
+      clip.originalDuration = relTime * playbackSpeed;
 
       // ★ 動画・音声・3Dモデルの独立した要素を新しく生成（取り合いバグを完全防止）
       let newElement = null;
@@ -2139,14 +2207,12 @@ calculateAnimTransform(clip) {
       let secondKeyframes = null;
 
       if (Array.isArray(clip.textKeyframes) && clip.textKeyframes.length > 0) {
-        // 前半クリップ用（relTime より前のキーフレーム）
         firstKeyframes = clip.textKeyframes.filter(k => k.time < relTime);
         if (firstKeyframes.length === 0) {
           firstKeyframes = [{ time: 0, text: clip.text || '' }];
         }
 
-        // 後半クリップ用（relTime 以降のキーフレームを 0 秒基準にシフト）
-        const afterKfs = clip.textKeyframes.filter(k => k.time >= relTime);
+        const afterKfs = clip.textKeyframes.filter(k => k.time > relTime);
         const activeAtSplit = clip.textKeyframes.slice().reverse().find(k => k.time <= relTime);
 
         secondKeyframes = [
@@ -2154,14 +2220,9 @@ calculateAnimTransform(clip) {
         ];
 
         afterKfs.forEach(k => {
-          const rawShift = Math.round((k.time - relTime) * 100) / 100;
-          if (rawShift <= 0.05) {
-            secondKeyframes[0].text = k.text;
-          } else {
-            const shiftedTime = Math.max(0.05, rawShift);
-            if (!secondKeyframes.some(sk => Math.abs(sk.time - shiftedTime) < 0.05)) {
-              secondKeyframes.push({ time: shiftedTime, text: k.text });
-            }
+          const shiftedTime = Math.max(0.05, Math.round((k.time - relTime) * 100) / 100);
+          if (!secondKeyframes.some(sk => Math.abs(sk.time - shiftedTime) < 0.05)) {
+            secondKeyframes.push({ time: shiftedTime, text: k.text });
           }
         });
         secondKeyframes.sort((a, b) => a.time - b.time);
@@ -2184,9 +2245,9 @@ calculateAnimTransform(clip) {
         ...clonedProps,
         id: 'clip-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
         startTime: clip.startTime + relTime,
-        mediaOffset: originalOffset + (relTime * pitch),
+        mediaOffset: originalOffset + (relTime * playbackSpeed),
         duration: remainingDuration,
-        originalDuration: remainingDuration * pitch,
+        originalDuration: remainingDuration * playbackSpeed,
         trackIndex: clip.trackIndex !== undefined ? clip.trackIndex : 0,
         audioFadeIn: 0,
         audioFadeOut: origFadeOut,
@@ -2197,7 +2258,9 @@ calculateAnimTransform(clip) {
         textKeyframes: secondKeyframes,
         markers: secondMarkers && secondMarkers.length > 0 ? secondMarkers : undefined,
         text: secondKeyframes ? secondKeyframes[0].text : clip.text,
-        transform: clip.transform ? { ...clip.transform } : undefined
+        transform: clip.transform ? { ...clip.transform } : undefined,
+        filters: clip.filters ? { ...clip.filters } : undefined,
+        crop: clip.crop ? { ...clip.crop } : undefined
       };
 
       if (this._mediaRegistry) {
@@ -2494,16 +2557,17 @@ calculateAnimTransform(clip) {
       this.state.tracks.forEach(track => {
         const curTrk = track.trackIndex ?? 0;
         if (curTrk === trkIdx && !idsToRemove.has(track.id)) {
+          const origStartTime = track.startTime || 0;
           let shift = 0;
           for (let k = 0; k < mergedIntervals.length; k++) {
             const inv = mergedIntervals[k];
-            if (track.startTime >= inv.end) {
+            if (origStartTime >= inv.end) {
               shift += (inv.end - inv.start);
-            } else if (track.startTime >= inv.start) {
-              shift += (track.startTime - inv.start);
+            } else if (origStartTime > inv.start) {
+              shift += (origStartTime - inv.start);
             }
           }
-          track.startTime = Math.max(0, track.startTime - shift);
+          track.startTime = Math.max(0, origStartTime - shift);
         }
       });
     });
@@ -3336,9 +3400,11 @@ calculateAnimTransform(clip) {
         this.saveState();
       }
     });
-    // フィルターのバイパス（全体有効/無効）トグル連動
+    // フィルターのバイパス（全体 / 選択クリップ有効/無効）トグル連動
     document.getElementById('filter-bypass-toggle')?.addEventListener('change', (e) => {
-      this.state.filters.enabled = e.target.checked;
+      const isClip = this.selectedItem && this.selectedItem.type !== 'background';
+      const targetObj = isClip ? (this.selectedItem.filters || (this.selectedItem.filters = {})) : this.state.filters;
+      targetObj.enabled = e.target.checked;
       this.requestRender();
     });
 
@@ -3356,12 +3422,14 @@ calculateAnimTransform(clip) {
       slider.addEventListener('change', () => this.saveState());
     };
 
-    // 1. カラー補正フィルター一括登録（スキーマ駆動）
+    // 1. カラー補正フィルター一括登録（全体 / 選択クリップ連動）
     VideoEditorEngine.FILTER_SCHEMA.forEach(({ key }) => {
       const el = document.getElementById(`filter-${key}`);
       if (el) {
         el.addEventListener('input', (e) => {
-          this.state.filters[key] = parseFloat(e.target.value);
+          const isClip = this.selectedItem && this.selectedItem.type !== 'background';
+          const targetObj = isClip ? (this.selectedItem.filters || (this.selectedItem.filters = {})) : this.state.filters;
+          targetObj[key] = parseFloat(e.target.value);
           this.requestRender();
         });
         el.addEventListener('change', () => this.saveState());
@@ -3414,6 +3482,7 @@ calculateAnimTransform(clip) {
 
     // 2. 2D/3D変形スライダー一括バインド（スキーマ駆動）
     const transKeySetters = {
+      opacity: v => v / 100,
       scale: v => v / 100,
       rotation: v => v,
       rotateX: v => v,
@@ -3429,6 +3498,38 @@ calculateAnimTransform(clip) {
           this.selectedItem.transform[key] = setter(val);
         }
       });
+    });
+
+    // 左右反転・上下反転ボタンのイベント
+    document.getElementById('btn-flip-h')?.addEventListener('click', () => {
+      if (!this.selectedItem?.transform) return;
+      this.saveState();
+      this.selectedItem.transform.flipX = !this.selectedItem.transform.flipX;
+      document.getElementById('btn-flip-h')?.classList.toggle('active', !!this.selectedItem.transform.flipX);
+      this.requestRender();
+    });
+
+    document.getElementById('btn-flip-v')?.addEventListener('click', () => {
+      if (!this.selectedItem?.transform) return;
+      this.saveState();
+      this.selectedItem.transform.flipY = !this.selectedItem.transform.flipY;
+      document.getElementById('btn-flip-v')?.classList.toggle('active', !!this.selectedItem.transform.flipY);
+      this.requestRender();
+    });
+
+    // クロップ入力イベント
+    ['crop-top', 'crop-bottom', 'crop-left', 'crop-right'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', () => {
+          if (!this.selectedItem) return;
+          if (!this.selectedItem.crop) this.selectedItem.crop = { top: 0, bottom: 0, left: 0, right: 0 };
+          const key = id.replace('crop-', '');
+          this.selectedItem.crop[key] = Math.max(0, Math.min(49, parseFloat(el.value) || 0));
+          this.requestRender();
+        });
+        el.addEventListener('change', () => this.saveState());
+      }
     });
 
     // ★ 物理モード切り替えイベント（アニメーション連動対応）
@@ -4400,9 +4501,12 @@ calculateAnimTransform(clip) {
       });
     };
 
-    // 1. フィルターリセット（スキーマ駆動自動初期化）
+    // 1. フィルターリセット（全体 / 選択クリップ個別 自動判別初期化）
     document.getElementById('reset-filter-btn')?.addEventListener('click', () => {
       this.saveState();
+      const isClip = this.selectedItem && this.selectedItem.type !== 'background';
+      const targetObj = isClip ? (this.selectedItem.filters || (this.selectedItem.filters = {})) : this.state.filters;
+
       const resetMap = {
         'filter-lut-preset': 'none',
         'filter-lut-intensity': 80,
@@ -4410,11 +4514,15 @@ calculateAnimTransform(clip) {
       };
 
       VideoEditorEngine.FILTER_SCHEMA.forEach(f => {
-        this.state.filters[f.key] = f.default;
+        targetObj[f.key] = f.default;
         resetMap[`filter-${f.key}`] = f.default;
       });
-      this.state.filters.lutPreset = 'none';
-      this.state.filters.lutIntensity = 0.8;
+      targetObj.lutPreset = 'none';
+      targetObj.lutIntensity = 0.8;
+      targetObj.enabled = true;
+
+      const bypassToggle = document.getElementById('filter-bypass-toggle');
+      if (bypassToggle) bypassToggle.checked = true;
 
       resetFormValues(resetMap);
       this.requestRender();
@@ -5432,10 +5540,10 @@ calculateAnimTransform(clip) {
         }
 
         if (this.dragState.isRotating) {
-          // 直接回転ドラッグ
+          // 直接回転ドラッグ（中心原点とY軸方向の数学座標系補正）
           const currentAngle = Math.atan2(curY - (this.dragState.selectedClip.transform.y || 0), curX - (this.dragState.selectedClip.transform.x || 0));
-          let deltaDeg = ((this.dragState.initialAngle - currentAngle) * 180) / Math.PI;
-          let newRot = Math.round(this.dragState.initialRotation + deltaDeg);
+          let deltaDeg = ((currentAngle - this.dragState.initialAngle) * 180) / Math.PI;
+          let newRot = Math.round(this.dragState.initialRotation - deltaDeg);
           if (this.state.isSnapEnabled && Math.abs(newRot % 45) < 4) {
             newRot = Math.round(newRot / 45) * 45;
           }
@@ -5542,18 +5650,6 @@ calculateAnimTransform(clip) {
         this.dragState.isRotating = false;
         this.dragState.selectedClip = null;
         this.saveState();
-      }
-    });
-
-    window.addEventListener('pointerup', (e) => {
-      if (this.dragState.isDraggingText) {
-        if (e.pointerId !== undefined && this.canvas.releasePointerCapture) {
-          try { this.canvas.releasePointerCapture(e.pointerId); } catch (err) {}
-        }
-        this.dragState.isDraggingText = false;
-        this.dragState.isResizing = false;
-        this.dragState.selectedClip = null;
-        this.saveState(); // 移動・リサイズ確定時にUndo履歴を保存
       }
     });
   }
@@ -6535,7 +6631,7 @@ setupTimelineUI() {
 
     if (!clip._audioNodes) {
       try {
-        // メディア要素に既に作られたソースノードがあれば再利用し、多重接続による InvalidStateError を完全遮断
+        // 既存の接続済みノードを確実に再利用
         let source = clip.element._mediaElementSourceNode;
         if (!source) {
           source = ctx.createMediaElementSource(clip.element);
@@ -6809,22 +6905,9 @@ setupTimelineUI() {
       const isFilterBypassed = f.enabled === false;
       const isFilterActive = !isFilterBypassed && VideoEditorEngine.FILTER_SCHEMA.some(s => f[s.key] !== s.default);
 
-      // フィルター文字列のメモ化（パラメータ未変更時はキャッシュ文字列を再利用）
-      if (isFilterActive) {
-        const filterKey = VideoEditorEngine.FILTER_SCHEMA.map(s => f[s.key]).join('_');
-        if (this._cachedFilterKey !== filterKey) {
-          this._cachedFilterKey = filterKey;
-          this._cachedFilterStr = VideoEditorEngine.FILTER_SCHEMA
-            .map(s => `${s.cssFn}(${f[s.key]}${s.unit})`)
-            .join(' ');
-        }
-      } else {
-        this._cachedFilterStr = 'none';
-        this._cachedFilterKey = 'none';
-      }
-
-      // Canvas コンテキストにフィルターを設定
-      this.ctx.filter = this._cachedFilterStr;
+      // 全体マスターフィルターの適用判定
+      const masterFilterCSS = VideoEditorEngine.buildFilterCSS(this.state.filters);
+      this.ctx.filter = masterFilterCSS;
 
       // 1. 各アクティブクリップのアニメーション座標を先行計算（ゼロアロケーション）
       const animMap = this._animTransformsMap || (this._animTransformsMap = new Map());
@@ -6866,11 +6949,11 @@ setupTimelineUI() {
         this.ctx.globalAlpha = 1.0;
       }
 
-      // フィルターと透明度を初期状態にリセット
+      // フィルターと透明度をリセット
       this.ctx.filter = 'none';
       this.ctx.globalAlpha = 1.0;
 
-      // Wasm 映画風LUTカラーグレーディングの適用
+      // 全体マスターLUTの適用（選択枠を描く前にピクセル変換）
       if (f.enabled !== false && f.lutPreset && f.lutPreset !== 'none' && f.lutIntensity > 0) {
         this.applyFiltersWithWasm(this.ctx, this.canvas.width, this.canvas.height);
       }

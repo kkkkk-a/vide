@@ -2351,3 +2351,29 @@ div.timeline-clip.selected .trim-handle::after {
   color: #ffcc00;
   font-weight: bold;
 }
+/* ==========================================================================
+   22. 反転・クロップ・拡張コントロールスタイル
+   ========================================================================== */
+#btn-flip-h.active,
+#btn-flip-v.active {
+  background: var(--accent-cyan) !important;
+  color: #000000 !important;
+  border-color: var(--accent-cyan) !important;
+  font-weight: bold;
+}
+
+.custom-res-input {
+  width: 48px;
+  background: var(--bg-dark-1);
+  border: 1px solid var(--bg-dark-4);
+  color: var(--accent-cyan);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 11px;
+  text-align: center;
+  outline: none;
+}
+
+.custom-res-input:focus {
+  border-color: var(--accent-cyan);
+}

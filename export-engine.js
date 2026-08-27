@@ -541,7 +541,7 @@ async exportOfflineFrames(canvas, tracks, duration, options, callbacks, renderFr
       for (let f = 0; f < totalFrames; f++) {
         const curSec = Math.min(duration, f / fps);
 
-        // 動画素材がある場合、各動画のシーク完了を待機
+        // 動画素材がある場合、各動画のシーク完了を待機（最大300ms待機）
         if (videoTracks.length > 0) {
           await Promise.all(videoTracks.map(t => {
             const el = t.element;
@@ -551,18 +551,23 @@ async exportOfflineFrames(canvas, tracks, duration, options, callbacks, renderFr
             const offset = t.mediaOffset || 0;
             const targetTime = Math.max(0, (offset + (curSec - t.startTime)) * pitch);
             const maxDur = el.duration || Infinity;
-            const safeTime = Math.min(targetTime, isFinite(maxDur) ? maxDur - 0.05 : targetTime);
+            const safeTime = Math.min(targetTime, isFinite(maxDur) ? Math.max(0, maxDur - 0.05) : targetTime);
 
-            if (Math.abs(el.currentTime - safeTime) < 0.02) return Promise.resolve();
+            if (Math.abs(el.currentTime - safeTime) < 0.02 && el.readyState >= 2) return Promise.resolve();
 
             return new Promise(res => {
+              let timer = null;
               const onSeeked = () => {
+                if (timer) clearTimeout(timer);
                 el.removeEventListener('seeked', onSeeked);
                 res();
               };
               el.addEventListener('seeked', onSeeked, { once: true });
               el.currentTime = safeTime;
-              setTimeout(res, 80); // タイムアウト保護
+              timer = setTimeout(() => {
+                el.removeEventListener('seeked', onSeeked);
+                res();
+              }, 300);
             });
           }));
         }

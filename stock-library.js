@@ -138,6 +138,11 @@ class StockLibrary {
         svg: (c) => `<svg viewBox="0 0 24 24" width="256" height="256" fill="${c}" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>`
       },
 
+      'svg-crown': {
+        name: '王冠 (1位/TOP)',
+        defaultColor: '#ffcc00',
+        svg: (c) => `<svg viewBox="0 0 24 24" width="256" height="256" fill="${c}" xmlns="http://www.w3.org/2000/svg"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .55-.45 1-1 1H6c-.55 0-1-.45-1-1v-1h14v1z"/></svg>`
+      },
       'svg-trophy': {
         name: 'トロフィー (優勝/王者)',
         defaultColor: '#ffcc00',

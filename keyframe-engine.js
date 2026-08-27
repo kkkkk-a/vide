@@ -268,7 +268,7 @@ class KeyframeEngine {
 
   // ★ 1. 二分探索による最近傍スナップ吸着計算
   calculateSnapTime(targetTime, tracks, currentTime = 0, markers = [], currentClipId = null, clipDuration = 0, zoom = 60) {
-    const snapThreshold = 12 / zoom;
+    const snapThreshold = Math.min(1.5, 12 / Math.max(1, zoom)); // 最大でも1.5秒以上の過剰吸着を防止
     let closestTime = targetTime;
     let minDiff = snapThreshold;
     let snappedPoint = null;
