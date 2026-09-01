@@ -38,7 +38,10 @@ class ThreeEngine {
     this.ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     this.scene.add(this.ambientLight);
 
-    this.loader = new THREE.GLTFLoader();
+    const LoaderClass = window.GLTFLoader || (window.THREE && window.THREE.GLTFLoader);
+    if (LoaderClass) {
+      this.loader = new LoaderClass();
+    }
   }
 
   // アスペクト比・解像度更新（ゼロ除算保護版）
@@ -348,25 +351,46 @@ class ThreeEngine {
 
     geo.attributes.position.needsUpdate = true;
   }
-  // GLTF / GLB モデルのロード (ボーン・アニメーション完全バインド)
+  // GLTF / GLB / VRM モデルのロード (VRM 3.0 & ボーン・アニメーション完全バインド)
   loadGLTF(url) {
     return new Promise((resolve, reject) => {
-      this.loader.load(
+      const LoaderClass = window.GLTFLoader || (window.THREE && window.THREE.GLTFLoader);
+      const loader = LoaderClass ? new LoaderClass() : this.loader;
+
+      // VRMプラグインの登録
+      if (window.VRMLoaderPlugin) {
+        loader.register((parser) => new window.VRMLoaderPlugin(parser));
+      }
+
+      loader.load(
         url,
         (gltf) => {
-          const model = gltf.scene;
+          const vrm = gltf.userData.vrm;
+          const model = vrm ? vrm.scene : gltf.scene;
           let mixer = null;
 
+          if (vrm && window.VRMUtils?.rotateVRM0) {
+            window.VRMUtils.rotateVRM0(vrm);
+          }
+
           if (gltf.animations && gltf.animations.length > 0) {
-            mixer = new THREE.AnimationMixer(model);
+            mixer = new window.THREE.AnimationMixer(model);
             gltf.animations.forEach((clip) => {
               mixer.clipAction(clip).play();
             });
-            model.animations = gltf.animations; // 複製時用にアニメーションデータを保持
+            model.animations = gltf.animations;
           }
 
+          // VRMの場合は影と初期回転を設定
+          model.traverse((obj) => {
+            if (obj.isMesh) {
+              obj.castShadow = true;
+              obj.receiveShadow = true;
+            }
+          });
+
           this.scene.add(model);
-          resolve({ model, mixer });
+          resolve({ model, mixer, vrm });
         },
         undefined,
         (err) => reject(err)

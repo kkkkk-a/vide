@@ -62,6 +62,16 @@ class VideoEditorEngine {
     // 音声合成エンジンを早期初期化
     this.synthEngine = new AudioSynthEngine(this.getAudioContext(), null);
 
+    // ★ アバタースタジオエンジン（2Dドット絵 / 3D VRM トラッキング）の初期化
+    if (window.AvatarStudioEngine) {
+      this.avatarStudio = new window.AvatarStudioEngine(this);
+      window.avatarStudio = this.avatarStudio;
+      this.avatarStudio.init();
+      if (this.wasmCore) {
+        this.avatarStudio.setWasmCore(this.wasmCore);
+      }
+    }
+
     // ★ 新要素をいくらでも追加できるプラグイン式描画レジストリ
     this.drawHandlers = {};
     this.initDrawHandlers();
@@ -72,11 +82,11 @@ class VideoEditorEngine {
     this.updateContextualToolbar();
     this.initWasm(); // ★ Rust Wasm モジュール初期化
 
-    // ★ Webフォント（Google Fonts）の読み込み完了時にテキスト描画キャッシュを完全破棄・再計算
+    // Webフォント（Google Fonts）の読み込み完了時にテキスト描画キャッシュを完全破棄・再計算
     if (document.fonts) {
       document.fonts.ready.then(() => {
         this.state.tracks.forEach(t => {
-          if (t.type === 'text' || t.contentMode === 'text' || t.contentMode === 'cutout') {
+          if (t.type === 'text') {
             t._cachedLines = null;
             t._lastTextCacheKey = null;
             t._cachedTransform = null;
@@ -512,11 +522,16 @@ class VideoEditorEngine {
       ctx.restore();
     };
 
-    // 3. 3Dオブジェクト（AnimationEngine完全連動の高速転写）
+    // 3. 3Dオブジェクト（VRM物理演算 & AnimationEngine完全連動の高速転写）
     this.drawHandlers['3d'] = (ctx, clip, animT) => {
       if (!clip.model || !this.threeEngine) return;
 
       const relTime = Math.max(0, this.state.currentTime - clip.startTime);
+
+      // ★ VRMモデルの場合、揺れもの物理（SpringBone）を更新
+      if (clip.vrm && typeof clip.vrm.update === 'function') {
+        clip.vrm.update(0.016);
+      }
 
       // AnimationEngineが算出した 3D回転 (X/Y/Z軸) をそのまま立体モデルへ適用
       const rotX = ((animT.rotateX || 0) * Math.PI) / 180;
@@ -714,6 +729,9 @@ class VideoEditorEngine {
       this.wasmCore = wasm;
       if (this.synthEngine) {
         this.synthEngine.setWasmCore(wasm);
+      }
+      if (this.avatarStudio) {
+        this.avatarStudio.setWasmCore(wasm);
       }
     } catch (e) {
       console.warn("Wasmの読み込みをスキップ (JSフォールバックで動作):", e);
@@ -2762,12 +2780,10 @@ calculateAnimTransform(clip) {
         }
       });
 
-
-      // ★ ボーンアニメーションを持つモデルの場合、Mixer も独立して再生成
       let newMixer = null;
       const animClips = clip.model.animations || (clip.mixer ? clip.mixer._actions?.map(a => a.getClip()) : null);
       if (animClips && animClips.length > 0 && window.THREE) {
-        newMixer = new THREE.AnimationMixer(newModel);
+        newMixer = new window.THREE.AnimationMixer(newModel);
         animClips.forEach((animClip) => {
           if (animClip) newMixer.clipAction(animClip).play();
         });
@@ -2920,6 +2936,9 @@ calculateAnimTransform(clip) {
     });
     // ★ 基礎キーボードショートカット対応
     window.addEventListener('keydown', (e) => {
+      // ★ アバタースタジオがアクティブな場合はエディタ側のショートカット（Space再生等）をスキップ
+      if (this.avatarStudio && this.avatarStudio.isActive) return;
+
       // 入力フォーム（テキストボックスやQuillエディタ、選択メニュー）に入力中の場合はショートカットを無視
       const isInputActive = () => {
         const el = document.activeElement;
@@ -3268,6 +3287,36 @@ calculateAnimTransform(clip) {
     document.getElementById('image-input').addEventListener('change', (e) => this.loadImageFile(e.target.files[0]));
     document.getElementById('audio-input').addEventListener('change', (e) => this.loadAudioFile(e.target.files[0]));
     document.getElementById('model3d-input').addEventListener('change', (e) => this.load3DModelFile(e.target.files[0]));
+
+    // ★ アバタースタジオ用素材読み込み (JSON / VRM / VRMA)
+    document.getElementById('avatar-file-input')?.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length === 0 || !this.avatarStudio) return;
+
+      for (const file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'json') {
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            try {
+              const data = JSON.parse(evt.target.result);
+              await this.avatarStudio.loadCharacter2D(data);
+            } catch (err) {
+              alert("ドット絵JSON読み込みエラー: " + err.message);
+            }
+          };
+          reader.readAsText(file);
+        } else if (ext === 'vrm') {
+          await this.avatarStudio.loadVRM(file);
+        } else if (ext === 'vrma') {
+          if (this.avatarStudio.loadVRMAnimation) {
+            await this.avatarStudio.loadVRMAnimation(file);
+          }
+        }
+      }
+      e.target.value = ''; // 同一ファイルの再選択を許可
+    });
+
     this.playBtn.addEventListener('click', () => this.togglePlay());
 
     // ★ 別タブへ移動した際は自動で一時停止（音ズレ・バックグラウンド負荷を防止）
@@ -5441,6 +5490,9 @@ calculateAnimTransform(clip) {
     const handleFiles = async (files, dropStartTime = null, dropTrackIdx = null) => {
       if (!files || files.length === 0) return;
 
+      // ★ アバタースタジオがアクティブな場合はエディタ側のドロップ処理をスキップ（二重読み込み防止）
+      if (this.avatarStudio && this.avatarStudio.isActive) return;
+
       let curStartTime = dropStartTime !== null ? dropStartTime : this.state.currentTime;
 
       for (const file of Array.from(files)) {
@@ -5952,15 +6004,33 @@ calculateAnimTransform(clip) {
 
   async load3DModelFile(file) {
     if (!file) return;
-    this.showLoading("3Dモデルを読み込み中...");
+    this.showLoading("3D / VRMモデルを読み込み中...");
     this.saveState();
 
     const url = URL.createObjectURL(file);
     try {
-      const { model, mixer } = await this.threeEngine.loadGLTF(url);
+      const { model, mixer, vrm } = await this.threeEngine.loadGLTF(url);
       URL.revokeObjectURL(url);
-      this.addTrackClip({ type: '3d', model, mixer, name: file.name, duration: 10, transform: { scale: 0.5, rotation: 0, rotateX: 0, rotateY: 0, x: 0, y: 0 }, materialProps: { color: '#ffffff', metalness: 0.5, roughness: 0.5, wireframe: false } });
-    } catch (err) { alert("3Dモデル読み込み失敗: " + err.message); }
+
+      // VRMモデルの場合は初期ハの字ポーズを適用
+      if (vrm && vrm.humanoid) {
+        const lArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+        const rArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+        if (lArm) lArm.rotation.z = 1.2;
+        if (rArm) rArm.rotation.z = -1.2;
+      }
+
+      this.addTrackClip({
+        type: '3d',
+        model,
+        mixer,
+        vrm,
+        name: file.name,
+        duration: 10,
+        transform: { scale: 0.5, rotation: 0, rotateX: 0, rotateY: 0, x: 0, y: 0 },
+        materialProps: { color: '#ffffff', metalness: 0.5, roughness: 0.5, wireframe: false }
+      });
+    } catch (err) { alert("モデル読み込み失敗: " + err.message); }
     finally { this.hideLoading(); }
   }
   createPrimitive3DShape(shapeType, colorHex) {
@@ -6245,8 +6315,10 @@ setupTimelineUI() {
       }));
 
       if (e.pointerId !== undefined && clipEl.setPointerCapture) {
-        try { clipEl.setPointerCapture(e.pointerId); } catch (err) {}
-      }
+          try {
+            clipEl.setPointerCapture(e.pointerId);
+          } catch (err) {}
+        }
 
       const onClipMove = (moveEvent) => {
         if (longPressTimer) {
@@ -7110,9 +7182,12 @@ setupTimelineUI() {
       const isFilterBypassed = f.enabled === false;
       const isFilterActive = !isFilterBypassed && VideoEditorEngine.FILTER_SCHEMA.some(s => f[s.key] !== s.default);
 
-      // 全体マスターフィルターの適用判定
-      const masterFilterCSS = VideoEditorEngine.buildFilterCSS(this.state.filters);
-      this.ctx.filter = masterFilterCSS;
+      // 全体マスターフィルター（Wasm 非対応ブラウザ用のフォールバック判定）
+      if (!this.wasmCore) {
+        this.ctx.filter = VideoEditorEngine.buildFilterCSS(this.state.filters);
+      } else {
+        this.ctx.filter = 'none';
+      }
 
       // 1. 各アクティブクリップのアニメーション座標を先行計算（ゼロアロケーション）
       const animMap = this._animTransformsMap || (this._animTransformsMap = new Map());
@@ -7227,15 +7302,32 @@ setupTimelineUI() {
     ctx.putImageData(imgData, 0, 0);
   }
 
-  // ★ 映画風 3D-LUT シネマカラーグレーディング（Wasm 高速演算 & JS フォールバック両対応版）
+  // ★ 映画風 3D-LUT & 基本カラー補正（Wasm 高速演算 & JS フォールバック両対応版）
   applyFiltersWithWasm(ctx, width, height) {
     const f = this.state.filters;
-    const isLutActive = f.enabled !== false && f.lutPreset && f.lutPreset !== 'none' && f.lutIntensity > 0;
-    if (!isLutActive) return false;
+    if (f.enabled === false) return false;
+
+    const isLutActive = f.lutPreset && f.lutPreset !== 'none' && f.lutIntensity > 0;
+    const isBasicActive = f.brightness !== 100 || f.contrast !== 100 || f.grayscale !== 0 || f.saturate !== 100 || f.invert !== 0;
+
+    if (!isLutActive && !isBasicActive) return false;
 
     try {
       const imgData = ctx.getImageData(0, 0, width, height);
       let isAppliedByWasm = false;
+
+      // 1. Rust による基本カラー補正 (LUT事前テーブル化で超高速)
+      if (this.wasmCore && this.wasmCore.apply_color_filters && isBasicActive) {
+        const uint8View = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+        this.wasmCore.apply_color_filters(
+          uint8View,
+          (f.brightness ?? 100) / 100,
+          (f.contrast ?? 100) / 100,
+          (f.grayscale ?? 0) / 100,
+          (f.saturate ?? 100) / 100,
+          (f.invert ?? 0) / 100
+        );
+      }
 
       // 1. Rust (WebAssembly) による高速演算
       if (this.wasmCore) {
@@ -7398,7 +7490,8 @@ setupTimelineUI() {
     const isFilterBypassed = f.enabled === false;
     const isFilterActive = !isFilterBypassed && VideoEditorEngine.FILTER_SCHEMA.some(s => f[s.key] !== s.default);
 
-    if (isFilterActive) {
+    // Wasm 非対応時のみ CSS フィルターを使用
+    if (isFilterActive && !this.wasmCore) {
       this.ctx.filter = VideoEditorEngine.FILTER_SCHEMA
         .map(s => `${s.cssFn}(${f[s.key]}${s.unit})`)
         .join(' ');
@@ -7420,7 +7513,8 @@ setupTimelineUI() {
     this.ctx.filter = 'none';
     this.ctx.globalAlpha = 1.0;
 
-    if (f.enabled !== false && f.lutPreset && f.lutPreset !== 'none' && f.lutIntensity > 0) {
+    // ★ Wasm による基本カラー補正 ＆ 3D-LUT を書き出し時にも確実に適用
+    if (f.enabled !== false) {
       this.applyFiltersWithWasm(this.ctx, this.canvas.width, this.canvas.height);
     }
   }

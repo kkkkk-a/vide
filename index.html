@@ -19,9 +19,42 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Klee+One&family=M+PLUS+Rounded+1c:wght@400;700&family=Shippori+Mincho&display=swap" rel="stylesheet">
 
-  <!-- 3Dモデル描画エンジン (Three.js) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <!-- 3Dモデル & VRM 描画エンジン (Three.js r169 + VRM 3.0) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/",
+        "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.0.0/lib/three-vrm.module.js",
+        "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3.0.0/lib/three-vrm-animation.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+    import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from '@pixiv/three-vrm-animation';
+    import { FaceLandmarker, PoseLandmarker, HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+    // ★ 書き込み可能なオブジェクトとして THREE を展開し、アドオンも統合登録
+    window.THREE = Object.assign({}, THREE, {
+      GLTFLoader: GLTFLoader,
+      OrbitControls: OrbitControls
+    });
+
+    window.GLTFLoader = GLTFLoader;
+    window.OrbitControls = OrbitControls;
+    window.VRMLoaderPlugin = VRMLoaderPlugin;
+    window.VRMUtils = VRMUtils;
+    window.createVRMAnimationClip = createVRMAnimationClip;
+    window.VRMAnimationLoaderPlugin = VRMAnimationLoaderPlugin;
+    window.FaceLandmarker = FaceLandmarker;
+    window.PoseLandmarker = PoseLandmarker;
+    window.HandLandmarker = HandLandmarker;
+    window.FilesetResolver = FilesetResolver;
+  </script>
 
   <!-- ★ 追加: Quill.js スクリプト -->
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
@@ -35,67 +68,328 @@
   <div id="app">
 <header class="header">
       <div class="header-left">
-        <button id="btn-shortcuts" class="btn btn-secondary" title="ショートカット一覧">ヘルプ</button>
-        <button id="btn-undo" class="btn btn-secondary" disabled>元に戻す</button>
-        <button id="btn-redo" class="btn btn-secondary" disabled>やり直す</button>
-        
-        <!-- プロジェクト保存 ＆ 開く -->
-        <button id="btn-save-project" class="btn btn-secondary" title="プロジェクトをJSONファイルとして保存">保存</button>
-        <label for="project-input" class="btn btn-secondary" title="保存したJSONプロジェクトを開く">開く</label>
-        <input type="file" id="project-input" accept=".json" hidden>
+        <!-- ★ モード切り替えタブ (常時表示) -->
+        <div class="mode-switch-group">
+          <button id="tab-mode-editor" class="btn btn-mode active" onclick="window.switchAppMode('editor')">動画エディタ</button>
+          <button id="tab-mode-studio" class="btn btn-mode" onclick="window.switchAppMode('studio')">アバタースタジオ</button>
+        </div>
 
-        <label for="video-input" class="btn btn-secondary">動画</label>
-        <input type="file" id="video-input" accept="video/*" hidden>
-        
-        <label for="image-input" class="btn btn-secondary">画像</label>
-        <input type="file" id="image-input" accept="image/*" hidden>
-        
-        <label for="audio-input" class="btn btn-secondary">音声</label>
-        <input type="file" id="audio-input" accept="audio/*" hidden>
+        <!-- 1. エディタ専用メニュー (エディタモード時のみ表示) -->
+        <div id="header-editor-left" class="flex-row-gap">
+          <button id="btn-shortcuts" class="btn btn-secondary" title="ショートカット一覧">ヘルプ</button>
+          <button id="btn-undo" class="btn btn-secondary" disabled>元に戻す</button>
+          <button id="btn-redo" class="btn btn-secondary" disabled>やり直す</button>
+          
+          <button id="btn-save-project" class="btn btn-secondary" title="プロジェクトをJSONファイルとして保存">保存</button>
+          <label for="project-input" class="btn btn-secondary" title="保存したJSONプロジェクトを開く">開く</label>
+          <input type="file" id="project-input" accept=".json" hidden>
 
-        <label for="model3d-input" class="btn btn-secondary">3Dモデル</label>
-        <input type="file" id="model3d-input" accept=".glb,.gltf" hidden>
+          <label for="video-input" class="btn btn-secondary">動画</label>
+          <input type="file" id="video-input" accept="video/*" hidden>
+          
+          <label for="image-input" class="btn btn-secondary">画像</label>
+          <input type="file" id="image-input" accept="image/*" hidden>
+          
+          <label for="audio-input" class="btn btn-secondary">音声</label>
+          <input type="file" id="audio-input" accept="audio/*" hidden>
 
-        <!-- マイク録音 / カメラ撮影 / 画面録画 -->
-        <button id="btn-open-voice-record" class="btn btn-secondary btn-rec-trigger" title="マイクからナレーション/アテレコ録音">録音</button>
-        <button id="btn-open-camera-capture" class="btn btn-secondary" title="カメラ写真撮影 / 動画録画">カメラ</button>
-        <button id="btn-open-screen-record" class="btn btn-secondary btn-rec-trigger" aria-label="画面録画を開く">[REC] 画面録画</button>
-        <button id="btn-toggle-pointer" class="btn btn-secondary" title="マーカー追加 (Mキー)" aria-label="マーカー打刻">マーカー打刻</button>
-        <button id="btn-open-markers" class="btn btn-secondary" title="マーカー一覧" aria-label="マーカー一覧">マーカー一覧</button>
-      </div>
+          <label for="model3d-input" class="btn btn-secondary">3D / VRM</label>
+          <input type="file" id="model3d-input" accept=".glb,.gltf,.vrm" hidden>
 
-<div class="header-center">
-        <select id="aspect-select" class="dropdown">
-          <optgroup label="縦型 (Shorts / TikTok / Reels)">
-            <option value="9:16">9:16 (縦型 720p)</option>
-            <option value="9:16-hd" selected>9:16 (縦型フルHD 1080p)</option>
-            <option value="9:16-4k">9:16 (縦型4K 2160p)</option>
-          </optgroup>
-          <optgroup label="横型 (YouTube / PC)">
-            <option value="16:9">16:9 (横型フルHD 1080p)</option>
-            <option value="16:9-2k">16:9 (横型2K 1440p)</option>
-            <option value="16:9-4k">16:9 (横型4K 2160p)</option>
-          </optgroup>
-          <optgroup label="SNS / スクエア">
-            <option value="1:1">1:1 (スクエア 1080p)</option>
-            <option value="4:5">4:5 (Instagramフィード)</option>
-            <option value="21:9">21:9 (シネマスコープ)</option>
-          </optgroup>
-          <optgroup label="カスタム">
-            <option value="custom">カスタム (数値自由指定)</option>
-          </optgroup>
-        </select>
+          <button id="btn-toggle-pointer" class="btn btn-secondary" title="マーカー追加 (Mキー)">マーカー打刻</button>
+          <button id="btn-open-markers" class="btn btn-secondary" title="マーカー一覧">マーカー一覧</button>
+        </div>
 
-        <!-- カスタム解像度入力用 (「カスタム」選択時のみ表示) -->
-        <div id="custom-res-inputs" class="custom-res-group hidden">
-          <input type="number" id="custom-width" class="custom-res-input" value="1080" placeholder="幅">
-          <span class="custom-res-sep">×</span>
-          <input type="number" id="custom-height" class="custom-res-input" value="1920" placeholder="高さ">
+        <!-- 2. アバタースタジオ専用メニュー (スタジオモード時のみ表示) -->
+        <div id="header-studio-left" class="flex-row-gap" style="display: none;">
+          <button class="btn btn-primary" onclick="document.getElementById('avatar-file-input').click()">素材読込</button>
+          <button id="header-btn-cam-toggle" class="btn btn-secondary" onclick="window.avatarStudio?.toggleCamera()">カメラ</button>
+          <button id="header-btn-mic-only" class="btn btn-secondary" onclick="window.avatarStudio?.toggleMicOnly()">マイクのみ</button>
+          <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.switchCamera()" title="カメラ切り替え">切替</button>
+          <button class="btn btn-secondary" onclick="window.avatarStudio?.calibrateFace()">正面リセット</button>
         </div>
       </div>
 
-      <button id="export-btn" class="btn btn-accent" disabled>書き出し</button>
+      <div class="header-center">
+        <!-- エディタ用 比率選択 -->
+        <div id="header-editor-center">
+          <select id="aspect-select" class="dropdown">
+            <optgroup label="縦型 (Shorts / TikTok / Reels)">
+              <option value="9:16">9:16 (縦型 720p)</option>
+              <option value="9:16-hd" selected>9:16 (縦型フルHD 1080p)</option>
+              <option value="9:16-4k">9:16 (縦型4K 2160p)</option>
+            </optgroup>
+            <optgroup label="横型 (YouTube / PC)">
+              <option value="16:9">16:9 (横型フルHD 1080p)</option>
+              <option value="16:9-2k">16:9 (横型2K 1440p)</option>
+              <option value="16:9-4k">16:9 (横型4K 2160p)</option>
+            </optgroup>
+            <optgroup label="SNS / スクエア">
+              <option value="1:1">1:1 (スクエア 1080p)</option>
+              <option value="4:5">4:5 (Instagramフィード)</option>
+              <option value="21:9">21:9 (シネマスコープ)</option>
+            </optgroup>
+            <optgroup label="カスタム">
+              <option value="custom">カスタム (数値自由指定)</option>
+            </optgroup>
+          </select>
+
+          <div id="custom-res-inputs" class="custom-res-group hidden">
+            <input type="number" id="custom-width" class="custom-res-input" value="1080" placeholder="幅">
+            <span class="custom-res-sep">×</span>
+            <input type="number" id="custom-height" class="custom-res-input" value="1920" placeholder="高さ">
+          </div>
+        </div>
+
+        <!-- スタジオ用 比率 ＆ VRM画角切り替えグループ -->
+        <div id="header-studio-center" class="flex-row-gap" style="display: none;">
+          <select id="header-sel-resolution-avatar" class="dropdown" onchange="window.avatarStudio?.changeResolution(this.value)">
+            <option value="landscape" selected>16:9 (横型 720p)</option>
+            <option value="portrait">9:16 (ショート縦型)</option>
+            <option value="square">1:1 (正方形)</option>
+          </select>
+
+          <!-- ヘッダー内クイックカメラアングル（VRM時のみ表示） -->
+          <div id="header-vrm-angles" class="flex-row-gap" style="display: none;">
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.setVRMCamera('ultra')">超アップ</button>
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.setVRMCamera('face')">顔</button>
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.setVRMCamera('bustup')">バスト</button>
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.setVRMCamera('fullbody')">全身</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右側メインアクションボタン -->
+      <div class="header-right">
+        <!-- エディタ時: 書き出しボタン -->
+        <button id="export-btn" class="btn btn-accent" disabled>書き出し</button>
+
+        <!-- スタジオ時: OBS別窓 & 録画ボタン -->
+        <div id="header-studio-right" class="flex-row-gap" style="display: none;">
+          <button class="btn btn-secondary" style="background:#17a2b8; color:#fff;" onclick="window.avatarStudio?.openOBSWindow()">OBS別窓</button>
+          <button id="header-btn-avatar-record" class="btn btn-accent btn-record-avatar" onclick="window.avatarStudio?.toggleRecording()">録画スタート</button>
+        </div>
+      </div>
     </header>
+
+    <!-- ★ アバタースタジオ画面 (ドット絵カメラの全機能完全網羅) -->
+    <div id="avatar-studio-container" class="avatar-studio-layout" style="display: none;">
+      <!-- アバター描画メインキャンバス -->
+      <div class="avatar-canvas-wrapper">
+        <canvas id="avatar-canvas"></canvas>
+        <div id="avatar-safe-guide" class="safe-area-guide" style="display:none;">
+          <div class="guide-ui-right"><span class="guide-text" style="top:-25px; right:5px;">アイコン等</span></div>
+          <div class="guide-ui-bottom"><span class="guide-text" style="top:-25px; left:5px;">説明文・タイトル</span></div>
+          <span class="guide-text" style="top:15px; left:15px;">[SAFE] セーフエリア</span>
+        </div>
+      </div>
+
+      <!-- 表情・ポーズ通知トースト -->
+      <div id="avatar-toast" class="avatar-toast">通常</div>
+
+      <!-- ドラッグ＆ドロップ オーバーレイ -->
+      <div id="avatar-drop-overlay" class="avatar-drop-overlay" style="display:none;">
+        JSON または VRM (.vrm / .vrma) をここにドロップ
+      </div>
+
+      <!-- 自分確認用カメラプレビュー -->
+      <video id="video-preview" autoplay playsinline muted></video>
+
+      <!-- メニュー表示ボタン (隠れている時用) -->
+      <button id="avatar-ui-open-btn" class="avatar-menu-btn" style="display:none;" onclick="window.avatarStudio?.toggleUIVisibility()">MENU</button>
+
+      <!-- アバター操作パネル (パラメータ調整専用) -->
+      <div id="avatar-ui-panel" class="avatar-ui-panel">
+        <div class="panel-head-row">
+          <h3>アバター設定・調整</h3>
+          <button class="btn-close-mini" onclick="window.avatarStudio?.toggleUIVisibility()">✕</button>
+        </div>
+        <input type="file" id="avatar-file-input" accept=".json,.vrm,.vrma" multiple hidden>
+
+        <!-- (ヘッダーへ移設したためパネル内VRMカメラアングルセクションは完全削除) -->
+
+        <!-- VRM アクション / ポーズ / モーション -->
+        <div class="avatar-panel-section" id="vrm-action-group" style="display:none; background:rgba(138,43,226,0.1); padding:6px; border-radius:6px;">
+          <label>VRM アクション / ポーズ</label>
+          <div class="flex-row-gap" style="margin-bottom:4px;">
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.playPresetPose('wave')">手を振る</button>
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.playPresetPose('armsFolded')">腕組み</button>
+            <button class="btn btn-secondary btn-mini" onclick="window.avatarStudio?.playPresetPose('star')">大の字</button>
+          </div>
+          <div style="font-size:10px; color:var(--text-muted); margin:3px 0;">▼ 読み込み済みモーション (.vrma)</div>
+          <div id="vrm-custom-motions" class="vrm-motions-container">
+            <span id="vrm-no-motion-text" style="font-size:10px; color:#888;">※ .vrma を読み込むとここに追加されます</span>
+          </div>
+          <button class="btn btn-secondary btn-full" style="font-size:10px; margin-top:4px;" onclick="window.avatarStudio?.stopVRMAnimation()">モーション停止・復帰</button>
+        </div>
+
+        <!-- VRM ライティング (平行光 / スポット2灯 / 環境光) -->
+        <div class="avatar-panel-section" id="vrm-light-group" style="display:none; background:rgba(255,193,7,0.08); padding:6px; border-radius:6px;">
+          <label>ライト設定</label>
+          <select id="sel-light-type" class="dropdown dropdown-wide" onchange="window.avatarStudio?.updateLight()">
+            <option value="directional">平行光源 (全体・影あり)</option>
+            <option value="spot">スポットライト (2灯・陰影強調)</option>
+          </select>
+          <div class="setting-row" style="margin-top:4px;">
+            <span class="row-label">環境光: <span id="val-ambient">20</span>%</span>
+            <input type="range" id="slider-ambient" min="0" max="100" value="20" oninput="window.avatarStudio?.updateLight()">
+          </div>
+          <div id="spot-settings" style="display:none;">
+            <div class="setting-row">
+              <span class="row-label">広がり: <span id="val-light-size">20</span></span>
+              <input type="range" id="slider-light-size" min="5" max="90" value="20" oninput="window.avatarStudio?.updateLight()">
+            </div>
+            <div class="setting-row">
+              <span class="row-label">エッジ: <span id="val-light-edge">80</span></span>
+              <input type="range" id="slider-light-edge" min="0" max="100" value="80" oninput="window.avatarStudio?.updateLight()">
+            </div>
+          </div>
+          <div style="margin-top:4px;">
+            <label style="font-size:10px;">メインライト (強:<span id="val-l1-int">150</span>% 左右:<span id="val-l1-x">30</span>° 上下:<span id="val-l1-y">20</span>°)</label>
+            <div class="flex-row-gap">
+              <input type="color" id="light1-color" value="#ffffff" oninput="window.avatarStudio?.updateLight()" style="width:28px; height:20px;">
+              <input type="range" id="slider-light1-int" min="0" max="500" value="150" oninput="window.avatarStudio?.updateLight()" style="width:40px;">
+              <input type="range" id="slider-light1-x" min="-180" max="180" value="30" oninput="window.avatarStudio?.updateLight()" style="flex:1;">
+              <input type="range" id="slider-light1-y" min="-90" max="90" value="20" oninput="window.avatarStudio?.updateLight()" style="flex:1;">
+            </div>
+          </div>
+          <div id="sub-light-group" style="display:none; margin-top:4px;">
+            <label style="font-size:10px;">サブライト (強:<span id="val-l2-int">100</span>% 左右:<span id="val-l2-x">-120</span>° 上下:<span id="val-l2-y">0</span>°)</label>
+            <div class="flex-row-gap">
+              <input type="color" id="light2-color" value="#0055ff" oninput="window.avatarStudio?.updateLight()" style="width:28px; height:20px;">
+              <input type="range" id="slider-light2-int" min="0" max="500" value="100" oninput="window.avatarStudio?.updateLight()" style="width:40px;">
+              <input type="range" id="slider-light2-x" min="-180" max="180" value="-120" oninput="window.avatarStudio?.updateLight()" style="flex:1;">
+              <input type="range" id="slider-light2-y" min="-90" max="90" value="0" oninput="window.avatarStudio?.updateLight()" style="flex:1;">
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. トラッキング連動設定 -->
+        <div class="avatar-panel-section">
+          <label>トラッキング詳細設定</label>
+          <div class="ai-check-box">
+            <label><input type="checkbox" id="chk-ai-pose" checked> 体(姿勢)</label>
+            <label style="margin-left:8px;"><input type="checkbox" id="chk-ai-hand" checked> 手</label>
+          </div>
+          <div style="font-size:10px; margin-top:4px; color:var(--accent-red);">
+            <label><input type="checkbox" id="chk-mute-out" onchange="window.avatarStudio?.updateAudioRouting()"> 録画音声をミュート (口パクのみ実行)</label>
+          </div>
+        </div>
+
+        <!-- 感度 & 滑らかさ -->
+        <div class="avatar-panel-section">
+          <div class="setting-row">
+            <span class="row-label">感度: <span id="val-sens">100</span>%</span>
+            <input type="range" id="slider-sens" min="10" max="300" value="100" oninput="document.getElementById('val-sens').innerText = this.value">
+          </div>
+          <div class="setting-row">
+            <span class="row-label">滑らかさ: <span id="val-smooth">70</span>%</span>
+            <input type="range" id="slider-smooth" min="0" max="95" value="70" oninput="document.getElementById('val-smooth').innerText = this.value">
+          </div>
+        </div>
+
+        <!-- 背景設定 -->
+        <div class="avatar-panel-section">
+          <label>背景設定</label>
+          <div class="flex-row-gap">
+            <select id="sel-bg" class="dropdown flex-1" onchange="window.avatarStudio?.changeBg(this.value)">
+              <option value="#00ff00" selected>グリーンバック</option>
+              <option value="transparent">完全透過 (透明)</option>
+              <option value="#0000ff">ブルーバック</option>
+              <option value="file">画像・動画を選択...</option>
+              <option value="custom">カスタムカラー...</option>
+            </select>
+            <input type="color" id="bg-color-picker-avatar" value="#ff00ff" style="width:32px; display:none;">
+            <input type="file" id="bg-file-input-avatar" accept="image/*,video/*" hidden>
+          </div>
+        </div>
+
+        <!-- センターリセット -->
+        <div class="avatar-panel-section">
+          <button class="btn btn-primary btn-full" style="background:#007bff;" onclick="window.avatarStudio?.calibrateFace()">センターリセット (今の顔を正面に)</button>
+          <p style="font-size:9px; color:var(--text-sub); text-align:center; margin:2px 0;">[Space]キーで操作パネルを隠せます</p>
+        </div>
+
+        <!-- ボイスチェンジャー & リップシンク -->
+        <div class="avatar-panel-section" style="background:rgba(255,100,100,0.08); padding:6px; border-radius:6px;">
+          <label>ボイスチェンジャー (※イヤホン推奨)</label>
+          <div class="flex-row-gap">
+            <label><input type="checkbox" id="chk-vc-enable" onchange="window.avatarStudio?.updateAudioRouting()"> 有効化</label>
+            <label style="margin-left:8px;"><input type="checkbox" id="chk-vc-monitor" onchange="window.avatarStudio?.updateAudioRouting()"> 自分の声を聞く</label>
+          </div>
+          <div class="setting-row" style="margin-top:4px;">
+            <span class="row-label">高さ (Pitch): <span id="val-pitch">0</span></span>
+            <input type="range" id="slider-pitch" min="-24" max="24" value="0" step="1" oninput="window.avatarStudio?.updatePitch()">
+          </div>
+          <div class="setting-row" style="border-top:1px dashed rgba(255,255,255,0.1); padding-top:4px; margin-top:4px;">
+            <span class="row-label">リップシンク感度: <span id="val-mic">50</span>%</span>
+            <input type="range" id="slider-mic-sens" min="0" max="200" value="50" oninput="document.getElementById('val-mic').innerText = this.value">
+          </div>
+          <div class="setting-row">
+            <span class="row-label">ノイズゲート: <span id="val-noise">10</span>%</span>
+            <input type="range" id="slider-noise" min="0" max="50" value="10" oninput="document.getElementById('val-noise').innerText = this.value">
+          </div>
+        </div>
+
+        <!-- モーション・ロック設定 -->
+        <div class="avatar-panel-section">
+          <label>モーション・ロック</label>
+          <div class="flex-row-gap">
+            <label><input type="checkbox" id="chk-auto-blink" checked> 自動まばたき</label>
+            <label style="margin-left:8px;"><input type="checkbox" id="chk-breathing" checked> 呼吸</label>
+          </div>
+          <div class="flex-row-gap" style="margin-top:2px;">
+            <label><input type="checkbox" id="chk-mirror" checked> ミラー</label>
+            <label style="margin-left:8px; color:var(--accent-red);"><input type="checkbox" id="chk-lock-eye"> 目を固定</label>
+            <label style="margin-left:8px; color:var(--accent-red);"><input type="checkbox" id="chk-lock-mouth"> 口を固定</label>
+          </div>
+        </div>
+
+        <!-- VRM固有の表情コントロール -->
+        <div class="avatar-panel-section" id="vrm-expressions-group" style="display:none; background:rgba(255,105,180,0.08); padding:6px; border-radius:6px;">
+          <label>VRM 表情・パーツ操作</label>
+          <div style="font-size:10px; color:var(--text-muted);">▼ 感情 (ショートカット対応)</div>
+          <div id="vrm-emotion-buttons" style="display:flex; flex-wrap:wrap; gap:4px; margin:4px 0;"></div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">▼ カスタムパーツ</div>
+          <div id="vrm-expressions-list" style="max-height:120px; overflow-y:auto;"></div>
+        </div>
+
+        <!-- 画面配置 (9点配置) -->
+        <div class="avatar-panel-section" style="background:rgba(40,167,69,0.08); padding:6px; border-radius:6px;">
+          <label>画面配置 (実況用)</label>
+          <div class="setting-row">
+            <span class="row-label">サイズ</span>
+            <input type="range" id="slider-scale-avatar" min="10" max="150" value="100" oninput="window.avatarStudio?.updateLayout()">
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:2px; margin-top:4px;">
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="left-top" onclick="window.avatarStudio?.setLayout('left', 'top')">左上</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="center-top" onclick="window.avatarStudio?.setLayout('center', 'top')">中上</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="right-top" onclick="window.avatarStudio?.setLayout('right', 'top')">右上</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="left-center" onclick="window.avatarStudio?.setLayout('left', 'center')">左中</button>
+            <button class="btn btn-primary btn-mini btn-layout-grid" data-align="center-center" onclick="window.avatarStudio?.setLayout('center', 'center')">中央</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="right-center" onclick="window.avatarStudio?.setLayout('right', 'center')">右中</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="left-bottom" onclick="window.avatarStudio?.setLayout('left', 'bottom')">左下</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="center-bottom" onclick="window.avatarStudio?.setLayout('center', 'bottom')">中下</button>
+            <button class="btn btn-secondary btn-mini btn-layout-grid" data-align="right-bottom" onclick="window.avatarStudio?.setLayout('right', 'bottom')">右下</button>
+          </div>
+        </div>
+
+        <!-- 安全圏ガイド表示 -->
+        <div class="avatar-panel-section" style="background:rgba(23,162,184,0.08); padding:6px; border-radius:6px;">
+          <div style="font-size:11px;">
+            <label><input type="checkbox" id="chk-safe-area-avatar" onchange="window.avatarStudio?.toggleSafeArea()"> SNS安全圏ガイドを表示</label>
+          </div>
+        </div>
+
+        <!-- 表情キー案内 -->
+        <div class="avatar-panel-section" id="expression-guide-group" style="background:rgba(255,255,255,0.03); padding:4px; border-radius:4px;">
+          <label>表情キー (数字キー 1〜9)</label>
+          <div id="expression-key-guide" style="font-size:9px; color:var(--text-muted); line-height:1.4;">
+            [1] 通常 [2] 怒り [3] 驚き [4] 笑い [5] 照れ
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 2. プレビューエリア -->
     <main class="preview-container" id="drop-zone">
@@ -1165,6 +1459,36 @@
   <script src="screen-recorder.js" defer></script>
   <script src="export-engine.js" defer></script>
   <script src="project-manager.js" defer></script>
+  <script src="avatar-studio.js" defer></script>
   <script type="module" src="app.js"></script>
+  <script>
+    // ★ スタジオ ⇄ エディタ切り替えグローバル関数 (ヘッダー連動版)
+    window.switchAppMode = function(mode) {
+      const isStudio = mode === 'studio';
+      document.getElementById('tab-mode-editor')?.classList.toggle('active', !isStudio);
+      document.getElementById('tab-mode-studio')?.classList.toggle('active', isStudio);
+
+      // 1. メイン画面の切り替え
+      document.getElementById('avatar-studio-container').style.display = isStudio ? 'flex' : 'none';
+      document.getElementById('drop-zone').style.display = isStudio ? 'none' : 'flex';
+      document.querySelector('.controls').style.display = isStudio ? 'none' : 'flex';
+      document.getElementById('timeline-container').style.display = isStudio ? 'none' : 'block';
+      document.getElementById('context-toolbar').style.display = isStudio ? 'none' : 'flex';
+
+      // 2. ヘッダー内コントロールの切り替え
+      document.getElementById('header-editor-left').style.display = isStudio ? 'none' : 'flex';
+      document.getElementById('header-studio-left').style.display = isStudio ? 'flex' : 'none';
+
+      document.getElementById('header-editor-center').style.display = isStudio ? 'none' : 'flex';
+      document.getElementById('header-studio-center').style.display = isStudio ? 'flex' : 'none';
+
+      document.getElementById('export-btn').style.display = isStudio ? 'none' : 'inline-flex';
+      document.getElementById('header-studio-right').style.display = isStudio ? 'flex' : 'none';
+
+      if (window.avatarStudio) {
+        window.avatarStudio.setActive(isStudio);
+      }
+    };
+  </script>
 </body>
 </html>

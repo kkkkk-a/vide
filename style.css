@@ -2379,3 +2379,252 @@ div.timeline-clip.selected .trim-handle::after {
 .custom-res-input:focus {
   border-color: var(--accent-cyan);
 }
+/* ==========================================================================
+   23. アバタースタジオ (Avatar Studio) 統合スタイル
+   ========================================================================== */
+
+/* ヘッダー内モード切り替えタブ */
+.mode-switch-group {
+  display: inline-flex;
+  background: var(--bg-dark-1);
+  border: 1px solid var(--bg-dark-4);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.btn-mode {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  border-radius: 4px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-mode:hover {
+  color: var(--text-main) !important;
+}
+
+.btn-mode.active {
+  background: var(--accent-cyan) !important;
+  color: #000000 !important;
+  font-weight: bold !important;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+/* アバタースタジオ全体コンテナ */
+.avatar-studio-layout {
+  position: absolute;
+  top: var(--header-height);
+  left: 0;
+  width: 100vw;
+  height: calc(100vh - var(--header-height));
+  background-color: #00ff00; /* デフォルトはグリーンバック */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  z-index: 45;
+}
+
+/* アバターキャンバス配置 */
+.avatar-canvas-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+#avatar-canvas {
+  position: absolute !important;
+  image-rendering: pixelated;
+  transition: transform 0.2s ease-out, top 0.2s ease-out, left 0.2s ease-out, right 0.2s ease-out, bottom 0.2s ease-out;
+  pointer-events: auto;
+}
+
+/* アバター右側操作パネル */
+.avatar-ui-panel {
+  position: fixed;
+  top: calc(var(--header-height) + 12px);
+  right: 14px;
+  width: 290px;
+  max-height: calc(100vh - var(--header-height) - 28px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background: rgba(24, 24, 27, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--bg-dark-4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.avatar-ui-panel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(20px);
+}
+
+.panel-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--bg-dark-4);
+  padding-bottom: 6px;
+}
+
+.panel-head-row h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin: 0;
+}
+
+.btn-close-mini {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.btn-close-mini:hover {
+  color: var(--text-main);
+}
+
+.avatar-panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.avatar-panel-section label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.btn-full {
+  width: 100% !important;
+}
+
+.btn-mini {
+  padding: 3px 6px !important;
+  font-size: 10px !important;
+  flex: 1;
+}
+
+.flex-row-gap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-check-box {
+  background: var(--bg-dark-3);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.btn-record-avatar {
+  background: var(--accent-red) !important;
+  color: #ffffff !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  box-shadow: 0 0 12px rgba(255, 45, 85, 0.5) !important;
+}
+
+.btn-record-avatar:hover {
+  background: #ff4569 !important;
+}
+
+/* 自分確認用カメラプレビュー (左下固定) */
+#video-preview {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  width: 160px;
+  height: 120px;
+  border: 2px solid #ffffff;
+  border-radius: 6px;
+  background: #000000;
+  transform: scaleX(-1);
+  z-index: 999;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+}
+
+/* 表情・ポーズ通知トースト */
+.avatar-toast {
+  position: fixed;
+  top: calc(var(--header-height) + 14px);
+  left: 14px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1000;
+  border: 1px solid var(--bg-dark-4);
+}
+
+/* SNSショート動画安全圏ガイド枠 */
+.safe-area-guide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 50;
+  border: 3px dashed rgba(255, 255, 255, 0.6);
+  box-sizing: border-box;
+}
+
+.guide-ui-right {
+  position: absolute;
+  right: 0;
+  bottom: 10%;
+  width: 60px;
+  height: 45%;
+  background: rgba(255, 45, 85, 0.25);
+  border-left: 2px dashed var(--accent-red);
+}
+
+.guide-ui-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 16%;
+  background: rgba(255, 45, 85, 0.25);
+  border-top: 2px dashed var(--accent-red);
+}
+
+.guide-text {
+  position: absolute;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px #000000;
+}
