@@ -931,7 +931,7 @@ class VideoEditorEngine {
         restoredElement.muted = !!t.isAudioSeparated || this.state.volume.isMuted;
       }
 
-      return {
+      const restoredTrack = {
         ...t,
         element: restoredElement,
         model: restoredModel,
@@ -939,6 +939,13 @@ class VideoEditorEngine {
         mixer: restoredMixer,
         innerMediaElement: restoredInnerMedia // ★ 追加
       };
+
+      // ★ Undo/Redo 復元時にボイスチェンジャー・EQ・コンプレッサーの接続ノードを確実に再構築
+      if (restoredElement && (t.type === 'video' || t.type === 'audio')) {
+        this.updateClipAudioNodes(restoredTrack);
+      }
+
+      return restoredTrack;
     });
 
     // 古い配列の初期化（残骸によるエラー防止）
@@ -1047,6 +1054,8 @@ class VideoEditorEngine {
       // 1. 未選択時メニュー
       const hasAudio = this.state.tracks.some(t => t.type === 'video' || t.type === 'audio');
       appendButtons([
+        { id: 'tool-voice-rec', label: '録音', action: () => document.getElementById('panel-voice-record')?.classList.remove('hidden') },
+        { id: 'tool-camera-cap', label: '撮影', action: () => this.openCameraCapturePanel() },
         { id: 'tool-text', label: '文字を追加', action: () => {
           this.saveState();
           const startT = this.state.currentTime;
@@ -1219,6 +1228,32 @@ class VideoEditorEngine {
       btnMute.innerText = isMuted ? '消音中' : '消音';
       btnMute.classList.toggle('active', isMuted);
     }
+
+    // ★ 音声パネルが開いている場合、選択されたクリップのボイスチェンジャー・EQ設定を即座にUIへ反映
+    const audioPanel = document.getElementById('panel-audio');
+    if (audioPanel && !audioPanel.classList.contains('hidden') && (item.type === 'video' || item.type === 'audio')) {
+      const vEffect = item.voiceEffect || { preset: 'none', intensity: 0.8 };
+      const vPresetSelect = document.getElementById('voice-effect-preset');
+      const vIntensitySlider = document.getElementById('voice-effect-intensity');
+      const vIntensityBadge = document.getElementById('val-voice-effect-intensity');
+      if (vPresetSelect) vPresetSelect.value = vEffect.preset || 'none';
+      if (vIntensitySlider) vIntensitySlider.value = Math.round((vEffect.intensity ?? 0.8) * 100);
+      if (vIntensityBadge) vIntensityBadge.innerText = `${Math.round((vEffect.intensity ?? 0.8) * 100)}%`;
+
+      const eq = item.eq || { low: 0, mid: 0, high: 0 };
+      const setEqUI = (id, val) => {
+        const slider = document.getElementById(id);
+        const badge = document.getElementById(`val-${id}`);
+        if (slider) slider.value = val;
+        if (badge) badge.innerText = `${val > 0 ? '+' : ''}${val}dB`;
+      };
+      setEqUI('eq-low', eq.low || 0);
+      setEqUI('eq-mid', eq.mid || 0);
+      setEqUI('eq-high', eq.high || 0);
+
+      const compChk = document.getElementById('audio-comp-enabled');
+      if (compChk) compChk.checked = !!item.compressorEnabled;
+    }
   }
   toggleSubPanel(panelId) {
     // 試聴プレビュー & Song Maker の再生を安全に停止
@@ -1241,6 +1276,18 @@ class VideoEditorEngine {
           isOpened = true;
           if (panelId === 'panel-caption-editor') {
             setTimeout(() => this.initQuillEditor(), 50);
+          } else if (panelId === 'panel-audio') {
+            // ★ 音声パネルが開いた際にボイスチェンジャー設定をUIに同期
+            const curItem = this.selectedItem;
+            if (curItem) {
+              const vEffect = curItem.voiceEffect || { preset: 'none', intensity: 0.8 };
+              const vPresetSelect = document.getElementById('voice-effect-preset');
+              const vIntensitySlider = document.getElementById('voice-effect-intensity');
+              const vIntensityBadge = document.getElementById('val-voice-effect-intensity');
+              if (vPresetSelect) vPresetSelect.value = vEffect.preset || 'none';
+              if (vIntensitySlider) vIntensitySlider.value = Math.round((vEffect.intensity ?? 0.8) * 100);
+              if (vIntensityBadge) vIntensityBadge.innerText = `${Math.round((vEffect.intensity ?? 0.8) * 100)}%`;
+            }
           }
         } else {
           p.classList.add('hidden');
@@ -1722,7 +1769,7 @@ class VideoEditorEngine {
     anims.forEach((anim, idx) => {
       const row = document.createElement('div');
       row.className = 'anim-item-row';
-      row.innerHTML = `<span>${idx + 1}. ${anim.type} (${anim.delay}s後 / ${anim.duration === 0 ? '最後まで' : anim.duration + 's'})</span><button class="btn btn-secondary btn-del-mini">✕</button>`;
+      row.innerHTML = `<span>${idx + 1}. ${anim.type} (${anim.delay}s後 / ${anim.duration === 0 ? '最後まで' : anim.duration + 's'})</span><button class="btn btn-secondary btn-del-mini">削除</button>`;
       row.querySelector('button').onclick = () => { this.removeMainAnimation(anim.id); this.requestRender(); };
       listEl.appendChild(row);
     });
@@ -1958,7 +2005,7 @@ calculateAnimTransform(clip) {
       const row = document.createElement('div');
       row.className = `caption-cue-item ${isActive ? 'active' : ''}`;
       row.style.cursor = 'pointer';
-      row.innerHTML = `<span class="caption-cue-time">${kf.time.toFixed(1)}s</span><span class="caption-cue-text">${kf.text.replace(/\n/g, ' ')}</span>${item.textKeyframes.length > 1 ? '<button class="btn btn-secondary btn-del-mini">✕</button>' : ''}`;
+      row.innerHTML = `<span class="caption-cue-time">${kf.time.toFixed(1)}s</span><span class="caption-cue-text">${kf.text.replace(/\n/g, ' ')}</span>${item.textKeyframes.length > 1 ? '<button class="btn btn-secondary btn-del-mini">削除</button>' : ''}`;
 
       row.onclick = (e) => {
         if (e.target.tagName === 'BUTTON') return;
@@ -2068,7 +2115,8 @@ calculateAnimTransform(clip) {
       mediaOffset: videoClip.mediaOffset || 0,
       trackIndex: audioTrackIdx,
       name: `${videoClip.name || '動画'} (音声)`,
-      waveform: originalWaveform || null
+      waveform: originalWaveform || null,
+      voiceEffect: videoClip.voiceEffect ? { ...videoClip.voiceEffect } : undefined
     };
 
     if (this._mediaRegistry) {
@@ -2446,6 +2494,7 @@ calculateAnimTransform(clip) {
         model: clonedModel,
         waveform: clipData.waveform || null,
         innerMediaElement: clipData.innerMediaElement || null,
+        voiceEffect: clipData.voiceEffect ? { ...clipData.voiceEffect } : undefined,
         // ★ 物理設定のディープコピー
         physics: clipData.physics ? { ...clipData.physics } : { enabled: true, bounciness: 0.4, isStatic: false },
         textKeyframes: Array.isArray(clipData.textKeyframes) ? JSON.parse(JSON.stringify(clipData.textKeyframes)) : undefined
@@ -2487,6 +2536,19 @@ calculateAnimTransform(clip) {
           item.element.parentNode.removeChild(item.element);
         }
       } catch (e) {}
+    }
+
+    // ボイスチェンジャーノードの完全切断とオシレーター停止
+    if (item._audioNodes?.voiceNodes) {
+      try {
+        item._audioNodes.voiceNodes.extraNodes?.forEach(n => {
+          if (typeof n.stop === 'function') n.stop();
+          n.disconnect();
+        });
+        item._audioNodes.voiceNodes.input.disconnect();
+        item._audioNodes.voiceNodes.output.disconnect();
+      } catch (e) {}
+      item._audioNodes.voiceNodes = null;
     }
 
     // 図形内動画の停止と除去
@@ -2728,6 +2790,7 @@ calculateAnimTransform(clip) {
       model: newModel,
       waveform: clip.waveform || null,
       innerMediaElement: clip.innerMediaElement || null,
+      voiceEffect: cloneObj(clip.voiceEffect), // ★ ここにボイスチェンジャー設定の引き継ぎを追加
       textKeyframes: cloneObj(clip.textKeyframes),
       transform: clip.transform ? { ...clip.transform } : undefined
     };
@@ -2803,6 +2866,47 @@ calculateAnimTransform(clip) {
     document.getElementById('btn-start-record')?.addEventListener('click', () => this.startScreenRecording());
     document.getElementById('btn-stop-record')?.addEventListener('click', () => this.stopScreenRecording());
 
+    // ★ マイク録音モーダル開閉 & 録音
+    document.getElementById('btn-open-voice-record')?.addEventListener('click', () => {
+      document.getElementById('panel-voice-record')?.classList.remove('hidden');
+    });
+    document.getElementById('btn-start-voice-rec')?.addEventListener('click', () => this.startVoiceRecording());
+    document.getElementById('btn-stop-voice-rec')?.addEventListener('click', () => this.stopVoiceRecording());
+
+    // ★ カメラ撮影モーダル開閉 & スナップショット / 動画録画
+    document.getElementById('btn-open-camera-capture')?.addEventListener('click', () => this.openCameraCapturePanel());
+    document.getElementById('btn-snap-camera-photo')?.addEventListener('click', () => this.snapCameraPhoto());
+    document.getElementById('btn-start-camera-video-rec')?.addEventListener('click', () => this.startCameraVideoRecording());
+    document.getElementById('btn-stop-camera-video-rec')?.addEventListener('click', () => this.stopCameraVideoRecording());
+
+    // ★ ボイスチェンジャーUIイベント
+    document.getElementById('voice-effect-preset')?.addEventListener('change', (e) => {
+      const item = this.selectedItem;
+      if (item && (item.type === 'video' || item.type === 'audio')) {
+        this.saveState();
+        if (!item.voiceEffect) item.voiceEffect = { preset: 'none', intensity: 0.8 };
+        item.voiceEffect.preset = e.target.value;
+        this.updateClipAudioNodes(item);
+        // 再生中であれば音色の変化を即座にプレビューへ反映
+        if (this.state.isPlaying) {
+          this.updateVolume();
+        }
+      }
+    });
+
+    document.getElementById('voice-effect-intensity')?.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value) / 100;
+      const valBadge = document.getElementById('val-voice-effect-intensity');
+      if (valBadge) valBadge.innerText = `${e.target.value}%`;
+      const item = this.selectedItem;
+      if (item && (item.type === 'video' || item.type === 'audio')) {
+        if (!item.voiceEffect) item.voiceEffect = { preset: 'none', intensity: 0.8 };
+        item.voiceEffect.intensity = val;
+        this.updateClipAudioNodes(item);
+      }
+    });
+    document.getElementById('voice-effect-intensity')?.addEventListener('change', () => this.saveState());
+
     // ウィンドウサイズ変更時にパディング再計算とタイムライン位置補正（RAFスロットリング版）
     let resizeRafId = null;
     window.addEventListener('resize', () => {
@@ -2873,9 +2977,14 @@ calculateAnimTransform(clip) {
         return;
       }
 
-      // 2. Escキー: 選択解除 ＆ 開いているすべてのパネル・モーダルを一括で閉じる
+      // 2. Escキー: 選択解除 ＆ 開いているすべてのパネル・モーダルを一括で閉じ、全デバイスを切断
       if (e.key === 'Escape') {
         this.deselectAll();
+        this.closeCameraCapturePanel(); // ★ カメラ切断
+        this.closeVoiceRecordPanel();   // ★ マイク切断
+        this.closeScreenRecordPanel();  // ★ 画面共有切断
+        this.synthEngine?.stopSequencerLoop(); // ★ 作曲ループ停止
+        this.synthEngine?.stopPreview();       // ★ SE試聴停止
         document.querySelectorAll('.sub-panel').forEach(p => p.classList.add('hidden'));
         document.querySelectorAll('.modal-export').forEach(p => p.classList.add('hidden'));
         return;
@@ -3168,13 +3277,22 @@ calculateAnimTransform(clip) {
       }
     });
 
+    // ★ ページ離脱・リロード時にすべてのハードウェア（カメラ/マイク/画面共有）を完全解放
+    window.addEventListener('beforeunload', () => {
+      this.closeCameraCapturePanel();
+      this.closeVoiceRecordPanel();
+      this.closeScreenRecordPanel();
+      this.synthEngine?.stopSequencerLoop();
+      this.synthEngine?.stopPreview();
+    });
+
     // ★ プレビュー全画面切り替えボタン
     const fsBtn = document.getElementById('btn-fullscreen-preview');
     const previewContainer = document.getElementById('drop-zone');
     if (fsBtn && previewContainer) {
       fsBtn.addEventListener('click', () => {
         const isFs = previewContainer.classList.toggle('fullscreen-mode');
-        fsBtn.innerText = isFs ? '✕ 閉じる' : '⛶ 全画面';
+        fsBtn.innerText = isFs ? '全画面解除' : '全画面表示';
       });
     }
 
@@ -3642,6 +3760,38 @@ calculateAnimTransform(clip) {
       this.setupTimelineUI();
       this.updateSelectedClipTimeUI();
       this.requestRender();
+    });
+
+    // 音声逆再生イベント
+    document.getElementById('btn-reverse-clip')?.addEventListener('click', async () => {
+      const clip = this.selectedItem;
+      if (!clip || (clip.type !== 'video' && clip.type !== 'audio') || !clip.element?.src) {
+        alert("音声を逆再生したい動画または音声素材を選択してください。");
+        return;
+      }
+      this.showLoading("音声を逆再生反転中...");
+      try {
+        const audioCtx = this.getAudioContext();
+        const res = await fetch(clip.element.src);
+        const arrayBuf = await res.arrayBuffer();
+        const decodedBuf = await audioCtx.decodeAudioData(arrayBuf);
+        const reversedBuf = window.VideoProcessor.reverseAudioBuffer(audioCtx, decodedBuf);
+        const wavBlob = this.synthEngine.audioBufferToWavBlob(reversedBuf);
+        const newFile = new File([wavBlob], `Reversed_${clip.name || 'audio'}.wav`, { type: 'audio/wav' });
+        
+        this.saveState();
+        const newUrl = URL.createObjectURL(newFile);
+        clip.element.src = newUrl;
+        const wf = await this.generateWaveformCanvas(newFile, this.state.volume.bgm);
+        if (wf) clip.waveform = wf;
+        this.setupTimelineUI();
+        this.seekTo(clip.startTime, true);
+        alert("音声を逆再生に反転しました。");
+      } catch (err) {
+        alert("逆再生処理エラー: " + err.message);
+      } finally {
+        this.hideLoading();
+      }
     });
 
     // 無音自動カット実行イベント
@@ -4533,15 +4683,16 @@ calculateAnimTransform(clip) {
       if (!this.selectedItem?.transform) return;
       this.saveState();
       this.selectedItem.transform = { scale: 1.0, rotation: 0, rotateX: 0, rotateY: 0, x: 0, y: 0 };
-      this.selectedItem.physics = { enabled: true, bounciness: 0.4, isStatic: false };
+      this.selectedItem.physics = { enabled: false, bounciness: 0.4, isStatic: false };
 
       resetFormValues({
         'trans-scale': 100, 'trans-rotate': 0, 'trans-rotate-x': 0, 'trans-rotate-y': 0,
-        'trans-x': 0, 'trans-y': 0, 'phys-collision-enabled': true, 'phys-static-enabled': false,
+        'trans-x': 0, 'trans-y': 0, 'phys-mode-select': 'none',
         'phys-bounce-rate': 40, 'val-phys-bounce': '40%', 'val-trans-scale': '100%',
         'val-trans-rotate': '0度', 'val-trans-rotate-x': '0度', 'val-trans-rotate-y': '0度',
         'val-trans-x': '0px', 'val-trans-y': '0px'
       });
+      document.getElementById('row-phys-bounce')?.classList.add('hidden');
       this.requestRender();
     });
 
@@ -4577,19 +4728,23 @@ calculateAnimTransform(clip) {
     document.getElementById('btn-distribute-h')?.addEventListener('click', () => executeAlignment('distribute-h'));
     document.getElementById('btn-distribute-v')?.addEventListener('click', () => executeAlignment('distribute-v'));
 
-    // 3. 音量・ピッチ・フェードのリセット
+    // 3. 音量・ピッチ・フェード・ボイスチェンジャーのリセット
     document.getElementById('reset-audio-btn')?.addEventListener('click', () => {
       this.saveState();
       this.state.volume = { video: 1.0, bgm: 1.0, pitch: 1.0, isMuted: false };
       if (this.selectedItem) {
         this.selectedItem.audioFadeIn = 0;
         this.selectedItem.audioFadeOut = 0;
+        this.selectedItem.voiceEffect = { preset: 'none', intensity: 0.8 };
+        this.updateClipAudioNodes(this.selectedItem);
       }
       resetFormValues({
         'vol-video': 100, 'vol-bgm': 100, 'pitch-rate': 100,
         'val-vol-video': '100%', 'val-vol-bgm': '100%', 'val-pitch-rate': '100%',
         'audio-fade-in': 0, 'audio-fade-out': 0,
-        'val-audio-fade-in': '0.0s', 'val-audio-fade-out': '0.0s'
+        'val-audio-fade-in': '0.0s', 'val-audio-fade-out': '0.0s',
+        'voice-effect-preset': 'none', 'voice-effect-intensity': 80,
+        'val-voice-effect-intensity': '80%'
       });
       this.updateVolume();
       this.state.tracks.forEach(t => { if (t.element) t.element.playbackRate = 1.0; });
@@ -4932,8 +5087,22 @@ calculateAnimTransform(clip) {
       const audioCtx = this.getAudioContext();
       const decoded = await audioCtx.decodeAudioData(arrayBuf);
 
-      // VideoProcessor で低音アタック解析
-      const beats = window.VideoProcessor.detectBeats(decoded, 1.35, 0.22);
+      let beats = null;
+
+      // ★ Rust (Wasm) が利用可能な場合は、先ほど最適化した150Hz LPF版で超高速・高精度解析
+      if (this.wasmCore && this.wasmCore.detect_audio_beats) {
+        try {
+          const rawSamples = decoded.getChannelData(0);
+          beats = Array.from(this.wasmCore.detect_audio_beats(rawSamples, decoded.sampleRate, 1.35, 0.22));
+        } catch (wasmErr) {
+          console.warn("Wasm ビート検出に失敗したため JS にフォールバックします:", wasmErr);
+        }
+      }
+
+      // JS フォールバック
+      if (!beats) {
+        beats = window.VideoProcessor.detectBeats(decoded, 1.35, 0.22);
+      }
 
       if (!beats || beats.length === 0) {
         alert("明確なリズム・ビートを検出できませんでした。");
@@ -6651,7 +6820,7 @@ setupTimelineUI() {
         highFilter.type = 'highshelf';
         highFilter.frequency.value = 8000;
 
-        const compressor = ctx.createDynamicsCompressor();
+       const compressor = ctx.createDynamicsCompressor();
         compressor.threshold.value = -20;
         compressor.knee.value = 10;
         compressor.ratio.value = 4;
@@ -6667,14 +6836,50 @@ setupTimelineUI() {
         highFilter.connect(gain);
         gain.connect(ctx.destination);
 
-        clip._audioNodes = { source, lowFilter, midFilter, highFilter, compressor, gain, isCompConnected: false };
+        clip._audioNodes = { source, lowFilter, midFilter, highFilter, compressor, gain, isCompConnected: false, voiceNodes: null, lastVoicePreset: 'none' };
       } catch (e) {
-        // 既に接続済みなどの例外を安全にガード
         return;
       }
     }
 
     const nodes = clip._audioNodes;
+
+    // ★ ボイスチェンジャーノードの動的再接続
+    const voiceSetting = clip.voiceEffect || { preset: 'none', intensity: 0.8 };
+    if (nodes.lastVoicePreset !== voiceSetting.preset || nodes.lastVoiceIntensity !== voiceSetting.intensity) {
+      nodes.lastVoicePreset = voiceSetting.preset;
+      nodes.lastVoiceIntensity = voiceSetting.intensity;
+
+      if (nodes.voiceNodes) {
+        try {
+          nodes.voiceNodes.extraNodes?.forEach(n => {
+            if (typeof n.stop === 'function') n.stop();
+            n.disconnect();
+          });
+          nodes.voiceNodes.input.disconnect();
+          nodes.voiceNodes.output.disconnect();
+        } catch (e) {}
+        nodes.voiceNodes = null;
+      }
+
+      nodes.highFilter.disconnect();
+      if (voiceSetting.preset !== 'none' && this.synthEngine) {
+        nodes.voiceNodes = this.synthEngine.createVoiceEffectNodes(ctx, voiceSetting.preset, voiceSetting.intensity);
+        if (nodes.voiceNodes) {
+          nodes.highFilter.connect(nodes.voiceNodes.input);
+          if (clip.compressorEnabled) {
+            nodes.voiceNodes.output.connect(nodes.compressor);
+            nodes.compressor.connect(nodes.gain);
+          } else {
+            nodes.voiceNodes.output.connect(nodes.gain);
+          }
+        } else {
+          nodes.highFilter.connect(clip.compressorEnabled ? nodes.compressor : nodes.gain);
+        }
+      } else {
+        nodes.highFilter.connect(clip.compressorEnabled ? nodes.compressor : nodes.gain);
+      }
+    }
     const eq = clip.eq || { low: 0, mid: 0, high: 0 };
 
     nodes.lowFilter.gain.setValueAtTime(eq.low || 0, ctx.currentTime);
@@ -7281,6 +7486,7 @@ setupTimelineUI() {
     // 再生開始時に、現在範囲内にあるメディアのみ再生
     this.state.tracks.forEach(t => {
       if ((t.type === 'video' || t.type === 'audio') && t.element) {
+        this.updateClipAudioNodes(t); // ★ オーディオノード（ボイスチェンジャー含む）を確実に初期化
         const inRange = this.state.currentTime >= t.startTime && this.state.currentTime < (t.startTime + t.duration);
         if (inRange) {
           const offset = t.mediaOffset || 0;
@@ -7460,7 +7666,7 @@ setupTimelineUI() {
     markers.forEach(m => {
       const row = document.createElement('div');
       row.className = 'marker-item-row';
-      row.innerHTML = `<span>${m.title}</span><span class="marker-time-badge">${m.targetTime.toFixed(2)}s</span><button class="btn btn-secondary btn-del-mini">✕</button>`;
+      row.innerHTML = `<span>${m.title}</span><span class="marker-time-badge">${m.targetTime.toFixed(2)}s</span><button class="btn btn-secondary btn-del-mini">削除</button>`;
 
       row.onclick = () => this.seekTo(m.targetTime, true);
       row.querySelector('button').onclick = (e) => {
@@ -7516,6 +7722,204 @@ setupTimelineUI() {
       this.showLoading("録画データをタイムラインへ配置中...");
       await this.loadVideoFile(res.file);
       this.hideLoading();
+    }
+  }
+
+  // ★ 1. マイク直接録音 (アテレコ / ナレーション)
+  async startVoiceRecording() {
+    try {
+      this._voiceRecStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+
+      this._voiceRecChunks = [];
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+      this._voiceMediaRecorder = new MediaRecorder(this._voiceRecStream, mime ? { mimeType: mime } : {});
+
+      this._voiceMediaRecorder.ondataavailable = (e) => {
+        if (e.data?.size > 0) this._voiceRecChunks.push(e.data);
+      };
+
+      this._voiceMediaRecorder.start(100);
+      this._voiceRecStartTime = Date.now();
+      this._voiceRecTimelineStart = this.state.currentTime;
+
+      document.getElementById('btn-start-voice-rec')?.classList.add('hidden');
+      document.getElementById('btn-stop-voice-rec')?.classList.remove('hidden');
+      document.getElementById('voice-rec-live-box')?.classList.remove('hidden');
+
+      this._voiceRecTimerId = setInterval(() => {
+        const sec = Math.floor((Date.now() - this._voiceRecStartTime) / 1000);
+        const m = String(Math.floor(sec / 60)).padStart(2, '0');
+        const s = String(sec % 60).padStart(2, '0');
+        const timerEl = document.getElementById('voice-rec-timer');
+        if (timerEl) timerEl.innerText = `${m}:${s}`;
+      }, 500);
+
+      // 同時動画再生
+      if (document.getElementById('voice-rec-play-video')?.checked && !this.state.isPlaying) {
+        this.play();
+      }
+    } catch (err) {
+      alert("マイクの起動に失敗しました: " + err.message);
+    }
+  }
+
+  async stopVoiceRecording() {
+    if (this._voiceRecTimerId) { clearInterval(this._voiceRecTimerId); this._voiceRecTimerId = null; }
+    if (this.state.isPlaying) this.pause();
+
+    const selectedVoiceEffect = document.getElementById('voice-rec-effect')?.value || 'none';
+
+    return new Promise((resolve) => {
+      if (this._voiceMediaRecorder && this._voiceMediaRecorder.state !== 'inactive') {
+        this._voiceMediaRecorder.onstop = async () => {
+          const blob = new Blob(this._voiceRecChunks, { type: 'audio/webm' });
+          const file = new File([blob], `Voice_${Date.now()}.webm`, { type: 'audio/webm' });
+
+          this._voiceRecStream?.getTracks().forEach(t => t.stop());
+          this._voiceRecStream = null;
+
+          document.getElementById('btn-start-voice-rec')?.classList.remove('hidden');
+          document.getElementById('btn-stop-voice-rec')?.classList.add('hidden');
+          document.getElementById('voice-rec-live-box')?.classList.add('hidden');
+          document.getElementById('panel-voice-record')?.classList.add('hidden');
+
+          this.showLoading("録音音声をタイムラインに配置中...");
+          await this.loadAudioFile(file);
+          
+          const addedClip = this.state.tracks[this.state.tracks.length - 1];
+          if (addedClip) {
+            addedClip.startTime = this._voiceRecTimelineStart;
+            addedClip.voiceEffect = { preset: selectedVoiceEffect, intensity: 0.85 };
+            this.updateClipAudioNodes(addedClip);
+            this.selectedItems = [addedClip];
+            // ★ 録音後すぐにボイスチェンジャーや音量を変更できるよう音声パネルを自動オープン
+            this.toggleSubPanel('panel-audio');
+          }
+          this.recalculateTotalDuration();
+          this.setupTimelineUI();
+          this.updateContextualToolbar();
+          this.hideLoading();
+          resolve();
+        };
+        this._voiceMediaRecorder.stop();
+      } else {
+        document.getElementById('panel-voice-record')?.classList.add('hidden');
+        resolve();
+      }
+    });
+  }
+
+  // ★ 2. Webカメラ撮影 & 動画録画
+  async openCameraCapturePanel() {
+    try {
+      this._cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+      const vid = document.getElementById('camera-preview-video');
+      if (vid) {
+        vid.srcObject = this._cameraStream;
+        vid.play();
+      }
+      document.getElementById('panel-camera-capture')?.classList.remove('hidden');
+    } catch (e) {
+      alert("カメラの起動に失敗しました: " + e.message);
+    }
+  }
+
+  closeCameraCapturePanel() {
+    // ★ 録画中ならレコーダーを安全停止
+    if (this._camRecorder && this._camRecorder.state !== 'inactive') {
+      try { this._camRecorder.stop(); } catch (e) {}
+    }
+    // ★ カメラの全トラックを完全停止（緑ランプを即時消灯）
+    if (this._cameraStream) {
+      this._cameraStream.getTracks().forEach(t => {
+        try { t.stop(); } catch (e) {}
+      });
+      this._cameraStream = null;
+    }
+    const vid = document.getElementById('camera-preview-video');
+    if (vid) { vid.pause(); vid.srcObject = null; }
+    document.getElementById('btn-start-camera-video-rec')?.classList.remove('hidden');
+    document.getElementById('btn-stop-camera-video-rec')?.classList.add('hidden');
+    document.getElementById('panel-camera-capture')?.classList.add('hidden');
+  }
+
+  // ★ マイク録音モーダルを閉じた時の完全切断処理（マイクランプ即時消灯）
+  closeVoiceRecordPanel() {
+    if (this._voiceRecTimerId) { clearInterval(this._voiceRecTimerId); this._voiceRecTimerId = null; }
+    if (this._voiceMediaRecorder && this._voiceMediaRecorder.state !== 'inactive') {
+      try { this._voiceMediaRecorder.stop(); } catch (e) {}
+    }
+    if (this._voiceRecStream) {
+      this._voiceRecStream.getTracks().forEach(t => {
+        try { t.stop(); } catch (e) {}
+      });
+      this._voiceRecStream = null;
+    }
+    document.getElementById('btn-start-voice-rec')?.classList.remove('hidden');
+    document.getElementById('btn-stop-voice-rec')?.classList.add('hidden');
+    document.getElementById('voice-rec-live-box')?.classList.add('hidden');
+    document.getElementById('panel-voice-record')?.classList.add('hidden');
+  }
+
+  // ★ 画面録画モーダルを閉じた時の完全停止・デバイス切断処理
+  closeScreenRecordPanel() {
+    if (window.ScreenRecorderEngine) {
+      window.ScreenRecorderEngine.cleanupStreams();
+    }
+    const liveVid = document.getElementById('record-live-video');
+    if (liveVid) { liveVid.pause(); liveVid.srcObject = null; }
+    document.getElementById('btn-start-record')?.classList.remove('hidden');
+    document.getElementById('btn-stop-record')?.classList.add('hidden');
+    document.getElementById('record-live-box')?.classList.add('hidden');
+    document.getElementById('panel-screen-record')?.classList.add('hidden');
+  }
+
+  snapCameraPhoto() {
+    const vid = document.getElementById('camera-preview-video');
+    if (!vid || vid.videoWidth === 0) return;
+
+    const snapCanvas = document.createElement('canvas');
+    snapCanvas.width = vid.videoWidth;
+    snapCanvas.height = vid.videoHeight;
+    const sCtx = snapCanvas.getContext('2d');
+    sCtx.drawImage(vid, 0, 0);
+
+    snapCanvas.toBlob(async (blob) => {
+      const file = new File([blob], `Photo_${Date.now()}.png`, { type: 'image/png' });
+      await this.loadImageFile(file);
+      this.closeCameraCapturePanel();
+      alert("写真を撮影してタイムラインに追加しました。");
+    }, 'image/png');
+  }
+
+  async startCameraVideoRecording() {
+    if (!this._cameraStream) return;
+    this._camChunks = [];
+    const mime = ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+    this._camRecorder = new MediaRecorder(this._cameraStream, mime ? { mimeType: mime } : {});
+    this._camRecorder.ondataavailable = e => { if (e.data?.size > 0) this._camChunks.push(e.data); };
+    this._camRecorder.start(100);
+
+    document.getElementById('btn-start-camera-video-rec')?.classList.add('hidden');
+    document.getElementById('btn-stop-camera-video-rec')?.classList.remove('hidden');
+  }
+
+  async stopCameraVideoRecording() {
+    if (this._camRecorder && this._camRecorder.state !== 'inactive') {
+      this._camRecorder.onstop = async () => {
+        const blob = new Blob(this._camChunks, { type: 'video/webm' });
+        const file = new File([blob], `Camera_${Date.now()}.webm`, { type: 'video/webm' });
+        this.closeCameraCapturePanel();
+        document.getElementById('btn-start-camera-video-rec')?.classList.remove('hidden');
+        document.getElementById('btn-stop-camera-video-rec')?.classList.add('hidden');
+        await this.loadVideoFile(file);
+      };
+      this._camRecorder.stop();
     }
   }
 } // ← クラスの閉じ括弧

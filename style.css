@@ -1029,41 +1029,43 @@ div.timeline-clip.selected .trim-handle::after {
   flex-shrink: 0 !important;
 }
 
-/* パネルヘッダー（右上の✕ボタンとの重なりを物理的に防ぐ強制右余白） */
+/* パネルヘッダー（右上の閉じるボタンとの重なりを防ぐ右余白） */
 .sub-panel-header {
   display: flex !important;
   justify-content: space-between !important;
   align-items: center !important;
-  padding-right: 48px !important; /* ★ ✕ボタンの場所を強力に確保 */
+  padding-right: 64px !important;
   margin-bottom: 8px !important;
   width: 100% !important;
   box-sizing: border-box !important;
 }
 
-/* 独立した円形閉じる「✕」ボタン (押しやすく干渉しないデザイン) */
+/* パネル共通の角丸「閉じる」ボタン */
 .btn-close {
   position: absolute;
   top: 10px;
   right: 12px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  padding: 4px 8px;
+  height: 24px;
+  border-radius: 4px;
   background: var(--bg-dark-3);
   border: 1px solid var(--bg-dark-4);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
   z-index: 10;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .btn-close:hover {
-  background-color: var(--accent-red);
-  color: #ffffff;
-  border-color: var(--accent-red);
+  background-color: var(--bg-dark-4);
+  color: var(--text-main);
+  border-color: var(--bg-dark-5);
 }
 
 /* フォーム要素 */

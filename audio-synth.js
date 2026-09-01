@@ -768,6 +768,127 @@ class AudioSynthEngine {
       return row;
     });
   }
+
+  // ★ 6. ボイスチェンジャー用エフェクトノード群の生成
+  createVoiceEffectNodes(audioCtx, preset = 'none', intensity = 0.8) {
+    if (!audioCtx || preset === 'none' || intensity <= 0) return null;
+
+    const inputNode = audioCtx.createGain();
+    const outputNode = audioCtx.createGain();
+    const dryGain = audioCtx.createGain();
+    const wetGain = audioCtx.createGain();
+
+    const dryVal = Math.max(0, 1.0 - intensity * 0.7);
+    const wetVal = Math.max(0, Math.min(1.0, intensity));
+    dryGain.gain.setValueAtTime(dryVal, audioCtx.currentTime);
+    wetGain.gain.setValueAtTime(wetVal, audioCtx.currentTime);
+
+    inputNode.connect(dryGain);
+    dryGain.connect(outputNode);
+
+    const extraNodes = [];
+
+    if (preset === 'robot') {
+      // ロボット声 (リングモジュレーター: 50Hzオシレーター変調)
+      const osc = audioCtx.createOscillator();
+      const modGain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(50, audioCtx.currentTime);
+      modGain.gain.setValueAtTime(0, audioCtx.currentTime);
+
+      inputNode.connect(modGain);
+      osc.connect(modGain.gain);
+      modGain.connect(wetGain);
+      osc.start(0);
+      extraNodes.push(osc);
+    } else if (preset === 'helium') {
+      // ヘリウム / アニメ声 (高域＆フォルマントブースト)
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.setValueAtTime(400, audioCtx.currentTime);
+
+      const peak1 = audioCtx.createBiquadFilter();
+      peak1.type = 'peaking';
+      peak1.frequency.setValueAtTime(2200, audioCtx.currentTime);
+      peak1.gain.setValueAtTime(14 * intensity, audioCtx.currentTime);
+      peak1.Q.setValueAtTime(2.0, audioCtx.currentTime);
+
+      inputNode.connect(hp);
+      hp.connect(peak1);
+      peak1.connect(wetGain);
+    } else if (preset === 'monster') {
+      // モンスター / 悪魔声 (低域強調 ＋ 歪みディストーション)
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = 'lowshelf';
+      lp.frequency.setValueAtTime(200, audioCtx.currentTime);
+      lp.gain.setValueAtTime(12 * intensity, audioCtx.currentTime);
+
+      const shaper = audioCtx.createWaveShaper();
+      const curve = new Float32Array(256);
+      const k = 20 * intensity;
+      const deg = Math.PI / 180;
+      for (let i = 0; i < 256; i++) {
+        const x = (i * 2) / 256 - 1;
+        curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+      }
+      shaper.curve = curve;
+      shaper.oversample = '2x';
+
+      inputNode.connect(lp);
+      lp.connect(shaper);
+      shaper.connect(wetGain);
+    } else if (preset === 'radio') {
+      // レトロラジオ / トランシーバー (狭帯域バンドパス ＋ 軽いクリップ)
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1200, audioCtx.currentTime);
+      bp.Q.setValueAtTime(1.8, audioCtx.currentTime);
+
+      const shaper = audioCtx.createWaveShaper();
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        const x = (i * 2) / 256 - 1;
+        curve[i] = Math.max(-0.6, Math.min(0.6, x * 1.8));
+      }
+      shaper.curve = curve;
+
+      inputNode.connect(bp);
+      bp.connect(shaper);
+      shaper.connect(wetGain);
+    } else if (preset === 'alien') {
+      // 宇宙人 (LFOトレモロ変調 ＋ ディレイ)
+      const tremoloGain = audioCtx.createGain();
+      const lfo = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+
+      lfo.frequency.setValueAtTime(14, audioCtx.currentTime); // 14Hz 高速揺らぎ
+      lfoGain.gain.setValueAtTime(0.4 * intensity, audioCtx.currentTime);
+      tremoloGain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(tremoloGain.gain);
+
+      inputNode.connect(tremoloGain);
+      tremoloGain.connect(wetGain);
+      lfo.start(0);
+      extraNodes.push(lfo);
+    } else if (preset === 'echo') {
+      // 洞窟エコー / スタジアム (フィードバックディレイ)
+      const delay = audioCtx.createDelay(1.0);
+      delay.delayTime.setValueAtTime(0.22, audioCtx.currentTime);
+      const feedback = audioCtx.createGain();
+      feedback.gain.setValueAtTime(0.45 * intensity, audioCtx.currentTime);
+
+      inputNode.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      delay.connect(wetGain);
+    }
+
+    wetGain.connect(outputNode);
+
+    return { input: inputNode, output: outputNode, extraNodes };
+  }
 }
 
 window.AudioSynthEngine = AudioSynthEngine;

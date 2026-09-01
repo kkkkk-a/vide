@@ -109,15 +109,26 @@ class ExportEngine {
         lowF.connect(midF);
         midF.connect(highF);
 
+        // ★ ボイスチェンジャーノードのオフライン直列合成
+        let lastNode = highF;
+        const voiceSetting = track.voiceEffect || { preset: 'none', intensity: 0.8 };
+        if (voiceSetting.preset !== 'none' && window.editor?.synthEngine) {
+          const voiceNodes = window.editor.synthEngine.createVoiceEffectNodes(offlineCtx, voiceSetting.preset, voiceSetting.intensity);
+          if (voiceNodes) {
+            highF.connect(voiceNodes.input);
+            lastNode = voiceNodes.output;
+          }
+        }
+
         // ★ 音圧コンプレッサー
         if (track.compressorEnabled) {
           const comp = offlineCtx.createDynamicsCompressor();
           comp.threshold.value = -20;
           comp.ratio.value = 4;
-          highF.connect(comp);
+          lastNode.connect(comp);
           comp.connect(gainNode);
         } else {
-          highF.connect(gainNode);
+          lastNode.connect(gainNode);
         }
 
         gainNode.connect(offlineCtx.destination);
@@ -328,16 +339,23 @@ class ExportEngine {
       tracks.forEach(t => {
         if ((t.type === 'video' || t.type === 'audio') && t.element && !t.isAudioSeparated && !t.hidden) {
           try {
-            if (!t.element._mediaElementSourceNode) {
-              t.element._mediaElementSourceNode = t._audioNodes?.source || audioCtx.createMediaElementSource(t.element);
+            // ★ 加工済み最終出力ノード（t._audioNodes.gain）を書き出し先に接続
+            if (t._audioNodes?.gain) {
+              try { t._audioNodes.gain.disconnect(); } catch (e) {}
+              t._audioNodes.gain.connect(exportDestNode);
+              connectedSources.push(t._audioNodes.gain);
+            } else {
+              if (!t.element._mediaElementSourceNode) {
+                t.element._mediaElementSourceNode = audioCtx.createMediaElementSource(t.element);
+              }
+              if (!t.element._mediaGainNode) {
+                t.element._mediaGainNode = audioCtx.createGain();
+                t.element._mediaElementSourceNode.connect(t.element._mediaGainNode);
+              }
+              try { t.element._mediaGainNode.disconnect(); } catch (e) {}
+              t.element._mediaGainNode.connect(exportDestNode);
+              connectedSources.push(t.element._mediaGainNode);
             }
-            if (!t.element._mediaGainNode) {
-              t.element._mediaGainNode = audioCtx.createGain();
-              t.element._mediaElementSourceNode.connect(t.element._mediaGainNode);
-            }
-            try { t.element._mediaGainNode.disconnect(); } catch (e) {}
-            t.element._mediaGainNode.connect(exportDestNode);
-            connectedSources.push(t.element._mediaGainNode);
           } catch (e) {}
         }
       });

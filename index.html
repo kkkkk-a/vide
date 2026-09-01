@@ -35,7 +35,7 @@
   <div id="app">
 <header class="header">
       <div class="header-left">
-        <button id="btn-shortcuts" class="btn btn-secondary" title="ショートカット一覧 (?)">？</button>
+        <button id="btn-shortcuts" class="btn btn-secondary" title="ショートカット一覧">ヘルプ</button>
         <button id="btn-undo" class="btn btn-secondary" disabled>元に戻す</button>
         <button id="btn-redo" class="btn btn-secondary" disabled>やり直す</button>
         
@@ -56,7 +56,9 @@
         <label for="model3d-input" class="btn btn-secondary">3Dモデル</label>
         <input type="file" id="model3d-input" accept=".glb,.gltf" hidden>
 
-        <!-- 画面録画 ＆ マーカー設置ボタン -->
+        <!-- マイク録音 / カメラ撮影 / 画面録画 -->
+        <button id="btn-open-voice-record" class="btn btn-secondary btn-rec-trigger" title="マイクからナレーション/アテレコ録音">録音</button>
+        <button id="btn-open-camera-capture" class="btn btn-secondary" title="カメラ写真撮影 / 動画録画">カメラ</button>
         <button id="btn-open-screen-record" class="btn btn-secondary btn-rec-trigger" aria-label="画面録画を開く">[REC] 画面録画</button>
         <button id="btn-toggle-pointer" class="btn btn-secondary" title="マーカー追加 (Mキー)" aria-label="マーカー打刻">マーカー打刻</button>
         <button id="btn-open-markers" class="btn btn-secondary" title="マーカー一覧" aria-label="マーカー一覧">マーカー一覧</button>
@@ -98,7 +100,7 @@
     <!-- 2. プレビューエリア -->
     <main class="preview-container" id="drop-zone">
       <!-- プレビュー全画面拡大（シアターモード）ボタン -->
-      <button id="btn-fullscreen-preview" class="btn-preview-fullscreen" title="プレビュー全画面表示" aria-label="全画面表示切り替え">全画面</button>
+      <button id="btn-fullscreen-preview" class="btn-preview-fullscreen" title="プレビュー全画面表示" aria-label="全画面表示切り替え">全画面表示</button>
 
       <canvas id="preview-canvas"></canvas>
       
@@ -134,7 +136,7 @@
           <div class="shortcuts-row"><span>コピー / 貼り付け / カット</span><kbd class="kbd-badge">Ctrl + C / V / X</kbd></div>
           <div class="shortcuts-row"><span>選択解除 / 閉じる</span><kbd class="kbd-badge">Esc</kbd></div>
         </div>
-        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-shortcuts').classList.add('hidden')">✕</button>
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-shortcuts').classList.add('hidden')">閉じる</button>
       </div>
 
       <!-- 書き出し設定モーダル（整列レイアウト版） -->
@@ -212,7 +214,7 @@
           書き出しスタート
         </button>
 
-        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-export').classList.add('hidden')">✕</button>
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-export').classList.add('hidden')">閉じる</button>
       </div>
 
       <!-- 画面録画モーダル -->
@@ -259,21 +261,65 @@
           録画を終了してタイムラインに追加
         </button>
 
-        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-screen-record').classList.add('hidden')">✕</button>
+        <button class="btn-close" aria-label="閉じる" onclick="window.editor?.closeScreenRecordPanel()">閉じる</button>
+      </div>
+
+      <!-- マイク直接録音 (アテレコ / ナレーション) モーダル -->
+      <div id="panel-voice-record" class="modal-export modal-record hidden" role="dialog" aria-modal="true">
+        <h3 class="record-modal-title">マイク録音スタジオ (アテレコ)</h3>
+        <div class="setting-group-box">
+          <span>動画を再生しながら録音 (リアルタイムアテレコ):
+            <input type="checkbox" id="voice-rec-play-video" checked class="checkbox-large">
+          </span>
+          <span>録音ボイスチェンジャー:
+            <select id="voice-rec-effect" class="dropdown dropdown-wide">
+              <option value="none" selected>そのまま (加工なし)</option>
+              <option value="robot">ロボット声</option>
+              <option value="helium">ヘリウム声</option>
+              <option value="monster">モンスター声</option>
+              <option value="radio">ラジオ声</option>
+              <option value="alien">宇宙人声</option>
+              <option value="echo">エコー声</option>
+            </select>
+          </span>
+        </div>
+        <div id="voice-rec-live-box" class="record-preview-box hidden" style="height: 80px;">
+          <div class="record-indicator">REC <span id="voice-rec-timer">00:00</span></div>
+          <div style="font-size: 11px; color: var(--accent-cyan);">マイクから音声入力中...</div>
+        </div>
+        <button id="btn-start-voice-rec" class="btn btn-accent btn-export-start btn-record-start">録音スタート</button>
+        <button id="btn-stop-voice-rec" class="btn btn-accent btn-export-start btn-record-stop hidden">録音完了してタイムラインに配置</button>
+        <button class="btn-close" aria-label="閉じる" onclick="window.editor?.closeVoiceRecordPanel()">閉じる</button>
+      </div>
+
+      <!-- Webカメラ写真撮影 & 動画録画モーダル -->
+      <div id="panel-camera-capture" class="modal-export modal-record hidden" role="dialog" aria-modal="true">
+        <h3 style="color: var(--accent-cyan);">Webカメラ撮影スタジオ</h3>
+        <div class="record-preview-box" style="height: 220px; background: #000;">
+          <video id="camera-preview-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
+        </div>
+        <div class="flex-btn-group" style="margin-top: 8px;">
+          <button id="btn-snap-camera-photo" class="btn btn-primary flex-1">写真を撮影してタイムラインに追加</button>
+        </div>
+        <div class="flex-btn-group" style="margin-top: 6px;">
+          <button id="btn-start-camera-video-rec" class="btn btn-accent flex-1 btn-record-start">カメラ動画 録画開始</button>
+          <button id="btn-stop-camera-video-rec" class="btn btn-accent flex-1 btn-record-stop hidden">録画終了してタイムラインに追加</button>
+        </div>
+        <button class="btn-close" aria-label="閉じる" onclick="window.editor?.closeCameraCapturePanel()">閉じる</button>
       </div>
 
       <!-- マーカー一覧管理モーダル -->
       <div id="panel-markers" class="modal-export hidden" role="dialog" aria-modal="true" aria-labelledby="title-markers">
         <div class="sub-panel-header">
           <h3 id="title-markers">マーカー一覧</h3>
-          <button id="btn-add-quick-marker" class="btn btn-secondary panel-header-btn">+ 今の位置に打刻 (M)</button>
+          <button id="btn-add-quick-marker" class="btn btn-secondary panel-header-btn">今の位置に打刻 (M)</button>
         </div>
 
         <div id="markers-list-container" class="markers-list-box">
           <!-- JSでマーカー一覧が動的に並びます -->
         </div>
 
-        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-markers').classList.add('hidden')">✕</button>
+        <button class="btn-close" aria-label="閉じる" onclick="document.getElementById('panel-markers').classList.add('hidden')">閉じる</button>
       </div>
 
     </main>
@@ -301,9 +347,9 @@
 
       
       <div class="zoom-controls">
-        <button id="btn-zoom-out" class="btn-icon" title="縮小 (全景)">－</button>
+        <button id="btn-zoom-out" class="btn-icon" title="縮小 (全景)">-</button>
         <input type="range" id="zoom-slider" class="zoom-slider" min="0.1" max="500" step="0.1" value="60">
-        <button id="btn-zoom-in" class="btn-icon" title="拡大 (詳細)">＋</button>
+        <button id="btn-zoom-in" class="btn-icon" title="拡大 (詳細)">+</button>
       </div>
 
       <div class="controls-right-group">
@@ -339,7 +385,7 @@
       <span>背景画像: <input type="file" id="bg-image-input" accept="image/*" class="dropdown file-input-compact"></span>
       <span>背景動画 (ループ): <input type="file" id="bg-video-input" accept="video/*" class="dropdown file-input-compact"></span>
       <button id="reset-bg-media-btn" class="btn btn-secondary panel-header-btn">背景メディアをクリア (単色に戻す)</button>
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- フィルター設定パネル -->
@@ -393,7 +439,7 @@
       <span>ぼかし: <input type="range" id="filter-blur" min="0" max="20" value="0">px</span>
       <span>彩度: <input type="range" id="filter-saturate" min="0" max="200" value="100"></span>
       <span>反転: <input type="range" id="filter-invert" min="0" max="100" value="0"></span>
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 変形設定パネル -->
@@ -449,7 +495,7 @@
         </span>
       </div>
 
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 音量・ピッチ・イコライザー調整パネル -->
@@ -464,6 +510,26 @@
       <span>ピッチ(音高/速度): <input type="range" id="pitch-rate" min="50" max="200" value="100"><span id="val-pitch-rate" class="val-badge">100%</span></span>
       <span>フェードイン(秒): <input type="range" id="audio-fade-in" min="0" max="5.0" step="0.1" value="0"><span id="val-audio-fade-in" class="val-badge">0.0s</span></span>
       <span>フェードアウト(秒): <input type="range" id="audio-fade-out" min="0" max="5.0" step="0.1" value="0"><span id="val-audio-fade-out" class="val-badge">0.0s</span></span>
+
+      <!-- ボイスチェンジャー (声質変換) -->
+      <span class="sub-panel-section-title">ボイスチェンジャー (声の加工)</span>
+      <div class="setting-group-box">
+        <span>プリセット:
+          <select id="voice-effect-preset" class="dropdown dropdown-wide">
+            <option value="none" selected>なし (標準)</option>
+            <option value="robot">ロボット声 (Ring Modulator)</option>
+            <option value="helium">ヘリウム / アニメ声 (高域フォルマント)</option>
+            <option value="monster">モンスター / 悪魔 (重低音・歪み)</option>
+            <option value="radio">ラジオ / トランシーバー (帯域制限)</option>
+            <option value="alien">宇宙人 / エイリアン (トレモロ・コーラス)</option>
+            <option value="echo">洞窟エコー / スタジアム (ディレイ)</option>
+          </select>
+        </span>
+        <span>加工の強さ:
+          <input type="range" id="voice-effect-intensity" min="0" max="100" value="80">
+          <span id="val-voice-effect-intensity" class="val-badge">80%</span>
+        </span>
+      </div>
 
       <!-- 3バンドイコライザー (3-Band EQ) -->
       <span class="sub-panel-section-title">3バンド・イコライザー (選択クリップ)</span>
@@ -490,7 +556,7 @@
         </span>
       </div>
 
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- クロマキー設定パネル -->
@@ -504,7 +570,7 @@
       <span>透過する色: <input type="color" id="chroma-color" value="#00ff00"></span>
       <span>許容範囲 (広さ): <input type="range" id="chroma-tolerance" min="5" max="150" value="40"><span id="val-chroma-tolerance" class="val-badge">40</span></span>
       <span>なめらかさ (フチ): <input type="range" id="chroma-smoothness" min="0" max="50" value="10"><span id="val-chroma-smoothness" class="val-badge">10</span></span>
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- トランジション設定パネル -->
@@ -529,7 +595,7 @@
         <span id="val-trans-duration" class="val-badge">0.6s</span>
       </span>
       <button id="apply-transition-btn" class="btn btn-accent btn-panel-action">2つの素材間に適用</button>
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 専用の整列・配置パネル (Align & Distribute) -->
@@ -580,7 +646,7 @@
         </div>
       </span>
 
-      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 音楽・効果音 (Song Maker 作曲スタジオ) -->
@@ -682,10 +748,10 @@
           <option value="click">決定クリック</option>
         </select>
         <button id="btn-play-se-preview" class="btn btn-secondary panel-header-btn">試聴</button>
-        <button id="btn-add-se-timeline" class="btn btn-secondary btn-se-add">+ 再生針の位置に追加</button>
+        <button id="btn-add-se-timeline" class="btn btn-secondary btn-se-add">再生針の位置に追加</button>
       </div>
 
-      <button class="btn-close" onclick="document.getElementById('panel-audio-gen').classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="window.editor?.synthEngine?.stopSequencerLoop(); this.parentElement.classList.add('hidden');">閉じる</button>
     </div>
 
     <!-- 図形挿入・調整パネル (強化版) -->
@@ -728,7 +794,7 @@
       <span>大きさ (px): <input type="range" id="shape-size" min="50" max="1000" value="250"><span id="val-shape-size" class="val-badge">250px</span></span>
 
       <button id="add-shape-btn" class="btn btn-accent btn-panel-action">図形をタイムラインに追加</button>
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- ★ 統合版: 3Dオブジェクト設定＆追加パネル -->
@@ -792,9 +858,9 @@
       <span>ワイヤーフレーム (骨組み): <input type="checkbox" id="3d-wireframe" class="checkbox-large"></span>
 
       <!-- 未選択時のみ表示されるタイムライン追加ボタン -->
-      <button id="add-3d-btn" class="btn btn-accent btn-panel-action">+ 3Dオブジェクトをタイムラインに追加</button>
+      <button id="add-3d-btn" class="btn btn-accent btn-panel-action">3Dオブジェクトをタイムラインに追加</button>
 
-      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- アニメーション設定パネル -->
@@ -807,7 +873,7 @@
       <!-- 自由キーフレーム操作エリア -->
       <div class="setting-group-box">
         <span>自由キーフレーム (位置・拡大・透明度):
-          <button id="btn-add-keyframe" class="btn btn-accent panel-header-btn">+ 現在位置にキーフレーム打刻</button>
+          <button id="btn-add-keyframe" class="btn btn-accent panel-header-btn">現在位置にキーフレーム打刻</button>
         </span>
         <div id="clip-keyframe-list" class="caption-cue-list"></div>
       </div>
@@ -850,13 +916,13 @@
             <option value="zoom">拡大/縮小</option>
           </optgroup>
         </select>
-        <button id="btn-add-main-anim" class="btn btn-secondary panel-header-btn">+ 効果追加</button>
+        <button id="btn-add-main-anim" class="btn btn-secondary panel-header-btn">効果追加</button>
       </div>
 
       <!-- 重ねがけ途中アニメーションリスト -->
       <div id="main-anim-list" class="anim-group-box"></div>
 
-      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 速度・逆再生・無音カット調整パネル -->
@@ -879,6 +945,7 @@
             <option value="4.0">4.0x (4倍速)</option>
           </select>
         </span>
+        <button id="btn-reverse-clip" class="btn btn-secondary btn-panel-action">音声を逆再生反転する</button>
       </div>
 
       <span class="sub-panel-section-title">無音区間自動ジャンプカット</span>
@@ -893,7 +960,7 @@
         <button id="btn-run-silence-cut" class="btn btn-accent btn-panel-action">無音部分を自動検出して一括カット</button>
       </div>
 
-      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- マスク & 描画モード (ブレンド) 設定パネル -->
@@ -923,7 +990,7 @@
         </span>
       </div>
 
-      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- ストック素材ライブラリパネル (SVGベクター素材対応) -->
@@ -979,10 +1046,10 @@
         <span>素材カラー (ベクター着色):
           <input type="color" id="stock-sticker-color" value="#00f0ff">
         </span>
-        <button id="btn-add-stock-sticker" class="btn btn-accent btn-panel-action">+ タイムラインに追加</button>
+        <button id="btn-add-stock-sticker" class="btn btn-accent btn-panel-action">タイムラインに追加</button>
       </div>
 
-      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" aria-label="閉じる" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- テキスト編集パネル -->
@@ -1046,12 +1113,12 @@
       <div class="caption-cue-section">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span style="font-size:11px; font-weight:bold; color:var(--text-sub);">時間ごとの文字変化 (キーフレーム)</span>
-          <button id="btn-add-text-cue" class="btn btn-secondary panel-header-btn">+ 現在位置に追加</button>
+          <button id="btn-add-text-cue" class="btn btn-secondary panel-header-btn">現在位置に追加</button>
         </div>
         <div id="caption-cue-list" class="caption-cue-list"></div>
       </div>
 
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 台本・スクリプト一括編集パネル (高度DSLテンプレート) -->
@@ -1080,7 +1147,7 @@
         <button id="btn-copy-script" class="btn btn-secondary panel-header-btn">台本をコピー</button>
       </div>
 
-      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">✕</button>
+      <button class="btn-close" onclick="this.parentElement.classList.add('hidden')">閉じる</button>
     </div>
 
     <!-- 6. 動的コンテキストツールバー (操作状態によってJSで自動生成されるため空でOK) -->

@@ -319,9 +319,6 @@ pub fn render_complete_music(
         let mut left = 0.0f32;
         let mut right = 0.0f32;
 
-        // ★ 周期ごとの位相（0.0〜1.0）を抽出して浮動小数点精度の劣化を防止
-        let bar_t = (current_beat % 4.0) * seconds_per_beat;
-
         // ★ ② コード＆パッド (ウォームなデチューン波形 + LPF)
         for (idx, &freq) in chord.iter().enumerate() {
             let pan = if idx % 2 == 0 { -0.25 } else { 0.25 };
@@ -734,13 +731,20 @@ pub fn detect_audio_beats(
         return Vec::new();
     }
 
+    // ★ 150Hz 低域通過フィルター(LPF)係数（キックドラムの帯域を抽出して誤検知防止）
+    let dt = 1.0 / sample_rate;
+    let rc = 1.0 / (2.0 * std::f32::consts::PI * 150.0);
+    let alpha = dt / (rc + dt);
+    let mut lpf_state = 0.0f32;
+
     let mut energies = Vec::with_capacity(num_blocks);
     for b in 0..num_blocks {
         let start = b * block_size;
         let end = start + block_size;
         let mut sum = 0.0f32;
         for &s in &samples[start..end] {
-            sum += s * s;
+            lpf_state += alpha * (s - lpf_state);
+            sum += lpf_state * lpf_state;
         }
         energies.push(sum / (block_size as f32));
     }
@@ -754,7 +758,7 @@ pub fn detect_audio_beats(
         let cur_energy = energies[b];
         let time = (b * block_size) as f32 / sample_rate;
 
-        if cur_energy > local_avg * sensitivity && cur_energy > 0.005 && (time - last_beat_time) >= min_interval_sec {
+        if cur_energy > local_avg * sensitivity && cur_energy > 0.001 && (time - last_beat_time) >= min_interval_sec {
             beat_times.push((time * 1000.0).round() / 1000.0);
             last_beat_time = time;
         }

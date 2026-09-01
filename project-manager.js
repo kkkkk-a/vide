@@ -290,6 +290,7 @@ class ProjectManager {
           },
           crop: t.crop || { top: 0, bottom: 0, left: 0, right: 0 },
           filters: t.filters ? { ...t.filters } : undefined,
+          voiceEffect: t.voiceEffect ? { ...t.voiceEffect } : undefined,
           element: restoredElement,
           model: restoredModel,
           waveform: restoredWaveform

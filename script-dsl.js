@@ -51,6 +51,8 @@ class ScriptDSL {
     { key: 'tg2', getter: c => (c.gradientEnabled ? c.gradientColor2 : undefined), setter: (c, v) => { c.gradientColor2 = v; } },
     { key: 'glow', getter: c => (c.glowEnabled ? c.glowBlur : undefined), setter: (c, v) => { c.glowEnabled = true; c.glowBlur = parseFloat(v); } },
     { key: 'gcolor', getter: c => (c.glowEnabled ? c.glowColor : undefined), setter: (c, v) => { c.glowColor = v; } },
+    { key: 'voice', getter: c => (c.voiceEffect?.preset && c.voiceEffect.preset !== 'none' ? c.voiceEffect.preset : undefined), setter: (c, v) => { if (!c.voiceEffect) c.voiceEffect = { intensity: 0.8 }; c.voiceEffect.preset = v; } },
+    { key: 'vintensity', getter: c => (c.voiceEffect?.preset && c.voiceEffect.preset !== 'none' ? c.voiceEffect.intensity : undefined), setter: (c, v) => { if (!c.voiceEffect) c.voiceEffect = { preset: 'robot' }; c.voiceEffect.intensity = parseFloat(v); } },
     { key: 'mask', getter: c => (c.maskType !== 'none' ? c.maskType : undefined), setter: (c, v) => { c.maskType = v; } },
     { key: 'blend', getter: c => (c.blendMode !== 'source-over' ? c.blendMode : undefined), setter: (c, v) => { c.blendMode = v; } },
     { key: 'speed', getter: c => (c.playbackSpeed !== 1.0 ? c.playbackSpeed : undefined), setter: (c, v) => { c.playbackSpeed = parseFloat(v); } },
