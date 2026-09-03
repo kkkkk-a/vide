@@ -170,6 +170,9 @@ class VideoEditorEngine {
       const baseDim = Math.min(this.canvas.width, this.canvas.height) * 0.5;
       w = baseDim;
       h = baseDim;
+    } else if (clip.type === 'sprite') {
+      w = clip.frameWidth || (clip.spriteCanvas ? clip.spriteCanvas.width / (clip.cols || 1) : 200);
+      h = clip.frameHeight || (clip.spriteCanvas ? clip.spriteCanvas.height / (clip.rows || 1) : 200);
     }
     const s = includeScale ? (clip.transform?.scale || 1.0) : 1.0;
     return { w: w * s, h: h * s };
@@ -664,6 +667,60 @@ class VideoEditorEngine {
       this.drawSelectionOutline(ctx, clip, this.canvas.width * 0.6, this.canvas.height * 0.6);
       ctx.restore();
     };
+
+    // 6. スプライトキャンバス アニメーション / レイヤー描画ハンドラー
+    this.drawHandlers['sprite'] = (ctx, clip, animT) => {
+      const spriteCanvas = clip.spriteCanvas;
+      if (!spriteCanvas) return;
+
+      const cols = clip.cols || 1;
+      const rows = clip.rows || 1;
+      const totalFrames = cols * rows;
+      const fps = clip.fps || 12;
+
+      const relTime = Math.max(0, this.state.currentTime - clip.startTime);
+      const frameIndex = totalFrames > 1 ? Math.floor(relTime * fps) % totalFrames : 0;
+
+      const col = frameIndex % cols;
+      const row = Math.floor(frameIndex / cols);
+
+      const frameW = clip.frameWidth || (spriteCanvas.width / cols);
+      const frameH = clip.frameHeight || (spriteCanvas.height / rows);
+
+      const radX = ((animT.rotateX || 0) * Math.PI) / 180;
+      const radY = ((animT.rotateY || 0) * Math.PI) / 180;
+      const flipX = clip.transform?.flipX ? -1 : 1;
+      const flipY = clip.transform?.flipY ? -1 : 1;
+      const scaleX = (animT.scale || 1.0) * Math.cos(radY) * flipX;
+      const scaleY = (animT.scale || 1.0) * Math.cos(radX) * flipY;
+
+      ctx.save();
+      ctx.globalAlpha = (animT.opacity !== undefined ? animT.opacity : 1.0) * (clip.transform?.opacity !== undefined ? clip.transform.opacity : 1.0);
+      ctx.globalCompositeOperation = clip.blendMode || 'source-over';
+      ctx.translate((this.canvas.width / 2) + (animT.x || 0), (this.canvas.height / 2) - (animT.y || 0));
+      if (animT.rotation) ctx.rotate((animT.rotation * Math.PI) / 180);
+      ctx.scale(scaleX, scaleY);
+
+      // ドット絵のシャープさを保持
+      ctx.imageSmoothingEnabled = false;
+
+      // 小数ピクセルによる隣接コマの映り込み（1pxスジ）を整数丸めで防止
+      const srcX = Math.floor(col * frameW);
+      const srcY = Math.floor(row * frameH);
+      const srcW = Math.floor(frameW);
+      const srcH = Math.floor(frameH);
+      const dstW = Math.floor(frameW);
+      const dstH = Math.floor(frameH);
+
+      ctx.drawImage(
+        spriteCanvas,
+        srcX, srcY, srcW, srcH,
+        -dstW / 2, -dstH / 2, dstW, dstH
+      );
+
+      this.drawSelectionOutline(ctx, clip, dstW, dstH);
+      ctx.restore();
+    };
   }
 
   // 選択枠 ＆ 四隅リサイズ・回転ハンドル描画ヘルパー
@@ -763,7 +820,7 @@ class VideoEditorEngine {
   serializeTrackData(tracks) {
     return tracks.map(t => {
       const {
-        element, model, mixer, waveform,
+        element, model, mixer, waveform, spriteCanvas,
         _audioSourceNode, _audioNodes, _mediaGainNode, _mediaElementSourceNode,
         innerMediaElement, _cachedLines, _cachedTransform, _animResultBuffer,
         _kfResultBuffer, _finalTransformBuffer, _cachedBitmapKey, _cachedCanvas,
@@ -888,6 +945,7 @@ class VideoEditorEngine {
           if (item.model) elementMap.set(item.id + '_model', item.model);
           if (item.waveform) elementMap.set(item.id + '_wf', item.waveform);
           if (item.mixer) elementMap.set(item.id + '_mixer', item.mixer);
+          if (item.spriteCanvas) elementMap.set(item.id + '_sprite', item.spriteCanvas);
         }
       }
     });
@@ -949,13 +1007,16 @@ class VideoEditorEngine {
         restoredElement.muted = !!t.isAudioSeparated || this.state.volume.isMuted;
       }
 
+      const restoredSprite = elementMap.get(t.id + '_sprite') || (cached ? cached.spriteCanvas : null) || t.spriteCanvas || null;
+
       const restoredTrack = {
         ...t,
         element: restoredElement,
         model: restoredModel,
         waveform: restoredWf,
         mixer: restoredMixer,
-        innerMediaElement: restoredInnerMedia // ★ 追加
+        innerMediaElement: restoredInnerMedia,
+        spriteCanvas: restoredSprite
       };
 
       // ★ Undo/Redo 復元時にボイスチェンジャー・EQ・コンプレッサーの接続ノードを確実に再構築
@@ -1120,6 +1181,16 @@ class VideoEditorEngine {
       const shapeMenu = [{ id: 'tool-shape-edit', label: '図形設定', action: () => this.syncAndToggleShapePanel() }, transformBtn, alignBtn, animBtn, splitBtn, hideBtn, copyBtn, deleteBtn];
 
       const typeSpecificMap = {
+        sprite: [
+          splitBtn,
+          transformBtn,
+          alignBtn,
+          animBtn,
+          { id: 'tool-filter', label: 'フィルター', action: () => this.syncAndToggleFilterPanel() },
+          hideBtn,
+          copyBtn,
+          deleteBtn
+        ],
         audio: [
           { id: 'tool-beat-detect', label: 'AIビート検出', action: () => this.detectAndApplyBeats() },
           { id: 'tool-sm-edit', label: '楽曲編集', action: () => this.openSongMakerEditor(item), condition: !!item.songMakerData },
@@ -2259,7 +2330,7 @@ calculateAnimTransform(clip) {
         newInnerMedia = clip.innerMediaElement;
       }
 
-      const { element, model, mixer, waveform, _audioSourceNode, _audioNodes, _mediaGainNode, _mediaElementSourceNode, _animResultBuffer, _kfResultBuffer, _finalTransformBuffer, ...safeProps } = clip;
+      const { element, model, mixer, waveform, spriteCanvas, _audioSourceNode, _audioNodes, _mediaGainNode, _mediaElementSourceNode, _animResultBuffer, _kfResultBuffer, _finalTransformBuffer, ...safeProps } = clip;
       const clonedProps = JSON.parse(JSON.stringify(safeProps));
 
       // 分割時のフェード設定の最適配分（前半: フェードイン維持 / 後半: フェードアウト維持）
@@ -2321,6 +2392,13 @@ calculateAnimTransform(clip) {
         model: newModel,
         innerMediaElement: newInnerMedia,
         waveform: clip.waveform || null,
+        spriteCanvas: clip.spriteCanvas || null,
+        rawSpriteData: clip.rawSpriteData || null,
+        cols: clip.cols,
+        rows: clip.rows,
+        fps: clip.fps,
+        frameWidth: clip.frameWidth,
+        frameHeight: clip.frameHeight,
         textKeyframes: secondKeyframes,
         markers: secondMarkers && secondMarkers.length > 0 ? secondMarkers : undefined,
         text: secondKeyframes ? secondKeyframes[0].text : clip.text,
@@ -2330,8 +2408,8 @@ calculateAnimTransform(clip) {
       };
 
       if (this._mediaRegistry) {
-        this._mediaRegistry.set(clip.id, { element: clip.element, model: clip.model, waveform: clip.waveform });
-        this._mediaRegistry.set(newClip.id, { element: newElement, model: newModel, waveform: clip.waveform });
+        this._mediaRegistry.set(clip.id, { element: clip.element, model: clip.model, waveform: clip.waveform, spriteCanvas: clip.spriteCanvas });
+        this._mediaRegistry.set(newClip.id, { element: newElement, model: newModel, waveform: clip.waveform, spriteCanvas: clip.spriteCanvas });
       }
 
       this.state.tracks.push(newClip);
@@ -5498,10 +5576,21 @@ calculateAnimTransform(clip) {
       for (const file of Array.from(files)) {
         const lowerName = file.name.toLowerCase();
 
-        // 1. プロジェクトファイル (.json)
+        // 1. JSONファイル判定（プロジェクト or スプライトアニメ素材）
         if (lowerName.endsWith('.json')) {
-          if (window.ProjectManager) {
-            await window.ProjectManager.loadProject(this, file);
+          try {
+            const jsonText = await file.text();
+            const parsed = JSON.parse(jsonText);
+            if (parsed.layers && (parsed.cols !== undefined || parsed.version === 2 || parsed.pixels)) {
+              // スプライトキャンバス製JSONの場合 ➔ タイムラインにアニメクリップとして直接追加
+              await this.loadSpriteJSON(parsed, file.name, curStartTime, dropTrackIdx);
+              curStartTime += 5;
+            } else if (window.ProjectManager) {
+              // 通常のvideプロジェクトファイルの場合
+              await window.ProjectManager.loadProject(this, file);
+            }
+          } catch (err) {
+            alert("JSON読み込みエラー: " + err.message);
           }
           return;
         }
@@ -6033,6 +6122,77 @@ calculateAnimTransform(clip) {
     } catch (err) { alert("モデル読み込み失敗: " + err.message); }
     finally { this.hideLoading(); }
   }
+  // ★ スプライトキャンバス製JSONをタイムライン素材として読み込み・合成
+  async loadSpriteJSON(data, fileName = 'sprite.json', startTime = null, trackIdx = null) {
+    this.showLoading("スプライトアニメーションを展開中...");
+    this.saveState();
+
+    try {
+      const spriteW = data.width || 640;
+      const spriteH = data.height || 320;
+      const cols = data.cols || 1;
+      const rows = data.rows || 1;
+      const fps = data.fps || 12;
+
+      const mergedCanvas = document.createElement('canvas');
+      mergedCanvas.width = spriteW;
+      mergedCanvas.height = spriteH;
+      const mCtx = mergedCanvas.getContext('2d');
+      mCtx.imageSmoothingEnabled = false;
+
+      // 各レイヤーを順番に合成描画
+      if (Array.isArray(data.layers)) {
+        for (let i = 0; i < data.layers.length; i++) {
+          const lData = data.layers[i];
+          if (lData.visible === false || !lData.image) continue;
+
+          const img = new Image();
+          await new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            img.src = lData.image;
+          });
+
+          mCtx.save();
+          mCtx.globalAlpha = lData.opacity !== undefined ? lData.opacity : 1.0;
+          mCtx.globalCompositeOperation = lData.blendMode || 'source-over';
+          mCtx.drawImage(img, 0, 0);
+          mCtx.restore();
+        }
+      }
+
+      const frameWidth = spriteW / cols;
+      const frameHeight = spriteH / rows;
+      const targetStartTime = startTime !== null ? startTime : this.state.currentTime;
+      const duration = 5; // 初期配置秒数（自由に伸縮可能）
+
+      const newClip = this.addTrackClip({
+        type: 'sprite',
+        name: fileName.replace(/\.json$/i, ''),
+        spriteCanvas: mergedCanvas,
+        rawSpriteData: data,
+        cols: cols,
+        rows: rows,
+        fps: fps,
+        frameWidth: frameWidth,
+        frameHeight: frameHeight,
+        duration: duration,
+        originalDuration: duration,
+        startTime: targetStartTime,
+        trackIndex: trackIdx !== null ? trackIdx : this.getAvailableTrackIndex(targetStartTime, duration),
+        transform: { scale: 1.0, rotation: 0, rotateX: 0, rotateY: 0, x: 0, y: 0 }
+      }, { element: null, model: null, waveform: null, spriteCanvas: mergedCanvas });
+
+      this.notifyUpdate();
+      this.showLoading("スプライト読み込み完了！");
+      setTimeout(() => this.hideLoading(), 500);
+      return newClip;
+    } catch (err) {
+      this.hideLoading();
+      alert("スプライト素材の読み込みに失敗しました: " + err.message);
+      return null;
+    }
+  }
   createPrimitive3DShape(shapeType, colorHex) {
     this.saveState();
     const isParticle = shapeType.startsWith('particles-');
@@ -6331,20 +6491,27 @@ setupTimelineUI() {
         const deltaTime = deltaX / this.state.zoom;
         const trackShift = Math.round(deltaY / 54);
 
-        const targetPos = initialPositions.find(p => p.clip === clip);
-        const clipDur = targetPos?.clip?.duration || clip.duration || 0;
-        let rawTargetStart = Math.max(0, (targetPos ? targetPos.startT : clip.startTime) + deltaTime);
+        const primaryPos = initialPositions[0];
+        const primaryClip = primaryPos ? primaryPos.clip : clip;
+        const primaryStart = primaryPos ? primaryPos.startT : clip.startTime;
+        const primaryDur = primaryClip.duration || 0;
 
-        let finalStart = rawTargetStart;
+        // 主軸素材（最初に掴んだ素材）を基準にスナップ計算
+        let rawPrimaryStart = Math.max(0, primaryStart + deltaTime);
+        let finalPrimaryStart = rawPrimaryStart;
         if (this.state.isSnapEnabled) {
-          finalStart = this.applySnapping(rawTargetStart, clip.id, clipDur);
+          finalPrimaryStart = this.applySnapping(rawPrimaryStart, primaryClip.id, primaryDur);
         }
-        const effectiveDeltaTime = finalStart - (targetPos ? targetPos.startT : clip.startTime);
+        const effectiveDeltaTime = finalPrimaryStart - primaryStart;
+
+        // すべての素材が0秒未満にならないよう最小開始時間を安全ガード
+        const minPossibleStart = Math.min(...initialPositions.map(p => p.startT));
+        const safeDeltaTime = Math.max(-minPossibleStart, effectiveDeltaTime);
 
         let maxClipEnd = this.state.duration;
 
         initialPositions.forEach(pos => {
-          let newStart = Math.max(0, pos.startT + effectiveDeltaTime);
+          let newStart = Math.max(0, Math.round((pos.startT + safeDeltaTime) * 100) / 100);
           pos.clip.startTime = newStart;
 
           let newTrackIdx = Math.max(0, Math.min(30, pos.trackIdx + trackShift));

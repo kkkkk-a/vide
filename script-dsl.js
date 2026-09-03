@@ -307,6 +307,20 @@ class ScriptDSL {
         clip.textKeyframes = textKeyframes.length > 0 ? textKeyframes : null;
         clip.text = textKeyframes.length > 0 ? textKeyframes[0].text : content;
         clip.fontFamily = opts.font ? ScriptDSL.getFamilyFromDsl(opts.font) : 'M PLUS Rounded 1c';
+      } else if (type === 'sprite') {
+        clip.type = 'sprite';
+        clip.cols = opts.cols ? parseInt(opts.cols) : (clip.cols || 1);
+        clip.rows = opts.rows ? parseInt(opts.rows) : (clip.rows || 1);
+        clip.fps = opts.fps ? parseInt(opts.fps) : (clip.fps || 12);
+        clip.name = content;
+        // 既存の同名スプライトクリップがあればその描画キャンバスを引き継ぐ
+        const existingSprite = existingClips.find(c => c.type === 'sprite' && (c.name === content || c.id === content));
+        if (existingSprite) {
+          clip.spriteCanvas = existingSprite.spriteCanvas;
+          clip.rawSpriteData = existingSprite.rawSpriteData;
+          clip.frameWidth = existingSprite.frameWidth;
+          clip.frameHeight = existingSprite.frameHeight;
+        }
       } else if (isDslShape) {
         clip.type = type;
         clip.width = opts.w ? parseFloat(opts.w) : (clip.size || 200);

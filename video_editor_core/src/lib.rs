@@ -164,14 +164,17 @@ pub fn apply_color_filters(
 
         // CSS 規格に準拠して Invert（反転）を末尾で適用
         if is_invert {
+            r = r.clamp(0.0, 255.0);
+            g = g.clamp(0.0, 255.0);
+            b = b.clamp(0.0, 255.0);
             r = r * (1.0 - inv_factor) + (255.0 - r) * inv_factor;
             g = g * (1.0 - inv_factor) + (255.0 - g) * inv_factor;
             b = b * (1.0 - inv_factor) + (255.0 - b) * inv_factor;
         }
 
-        chunk[0] = r.clamp(0.0, 255.0) as u8;
-        chunk[1] = g.clamp(0.0, 255.0) as u8;
-        chunk[2] = b.clamp(0.0, 255.0) as u8;
+        chunk[0] = r.clamp(0.0, 255.0).round() as u8;
+        chunk[1] = g.clamp(0.0, 255.0).round() as u8;
+        chunk[2] = b.clamp(0.0, 255.0).round() as u8;
     }
 }
 
@@ -642,7 +645,7 @@ pub fn apply_custom_3d_lut(
     intensity: f32,
 ) {
     let factor = intensity.clamp(0.0, 1.0);
-    if factor <= 0.0 || lut_size < 2 {
+    if factor <= 0.0 || lut_size < 2 || lut_table.len() < lut_size * lut_size * lut_size * 3 {
         return;
     }
 
@@ -753,12 +756,18 @@ pub fn detect_audio_beats(
     let mut beat_times = Vec::new();
     let mut last_beat_time = -min_interval_sec;
 
-    for b in history_blocks..num_blocks {
-        let local_avg: f32 = energies[b - history_blocks..b].iter().sum::<f32>() / (history_blocks as f32);
+    // 初期ヒストリ蓄積後（0.4秒以降）から解析を開始し、曲頭のインパルス誤検知を防止
+    let start_block = history_blocks.max(((0.1 / 0.02) as usize).max(1));
+    for b in start_block..num_blocks {
+        let history_slice = &energies[b.saturating_sub(history_blocks)..b];
+        if history_slice.is_empty() {
+            continue;
+        }
+        let local_avg: f32 = history_slice.iter().sum::<f32>() / (history_slice.len() as f32);
         let cur_energy = energies[b];
         let time = (b * block_size) as f32 / sample_rate;
 
-        if cur_energy > local_avg * sensitivity && cur_energy > 0.001 && (time - last_beat_time) >= min_interval_sec {
+        if cur_energy > (local_avg * sensitivity).max(0.003) && (time - last_beat_time) >= min_interval_sec {
             beat_times.push((time * 1000.0).round() / 1000.0);
             last_beat_time = time;
         }

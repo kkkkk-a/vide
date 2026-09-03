@@ -65,6 +65,8 @@ class ProjectManager {
           } catch (fetchErr) {
             console.warn("メディアのDataURL変換に失敗:", t.name, fetchErr);
           }
+        } else if (t.type === 'sprite' && t.spriteCanvas) {
+          trackData.spriteDataUri = t.spriteCanvas.toDataURL('image/png');
         }
 
         serializableTracks.push(trackData);
@@ -269,6 +271,37 @@ class ProjectManager {
             editor.threeEngine.applyMaterialProps(restoredModel, t.materialProps);
           }
         }
+        // 5. スプライトアニメ素材の復元
+        let restoredSpriteCanvas = null;
+        if (t.type === 'sprite') {
+          if (t.spriteDataUri) {
+            const sImg = new Image();
+            await new Promise((res) => { sImg.onload = res; sImg.onerror = res; sImg.src = t.spriteDataUri; });
+            const sCan = document.createElement('canvas');
+            sCan.width = sImg.width;
+            sCan.height = sImg.height;
+            sCan.getContext('2d').drawImage(sImg, 0, 0);
+            restoredSpriteCanvas = sCan;
+          } else if (t.rawSpriteData) {
+            // 元データから再合成
+            const sW = t.rawSpriteData.width || 640;
+            const sH = t.rawSpriteData.height || 320;
+            const sCan = document.createElement('canvas');
+            sCan.width = sW;
+            sCan.height = sH;
+            const sCtx = sCan.getContext('2d');
+            if (Array.isArray(t.rawSpriteData.layers)) {
+              for (const lay of t.rawSpriteData.layers) {
+                if (lay.visible !== false && lay.image) {
+                  const lImg = new Image();
+                  await new Promise((res) => { lImg.onload = res; lImg.onerror = res; lImg.src = lay.image; });
+                  sCtx.drawImage(lImg, 0, 0);
+                }
+              }
+            }
+            restoredSpriteCanvas = sCan;
+          }
+        }
 
         const validClip = {
           ...t,
@@ -293,7 +326,8 @@ class ProjectManager {
           voiceEffect: t.voiceEffect ? { ...t.voiceEffect } : undefined,
           element: restoredElement,
           model: restoredModel,
-          waveform: restoredWaveform
+          waveform: restoredWaveform,
+          spriteCanvas: restoredSpriteCanvas
         };
 
         if (editor._mediaRegistry) {
